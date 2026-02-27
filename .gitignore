@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+instance/leaderboard.db
+instance/
+.env
+.DS_Store

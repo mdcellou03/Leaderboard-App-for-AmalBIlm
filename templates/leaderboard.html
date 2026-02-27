@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-end justify-content-between mb-3">
+  <div>
+    <h1 class="h3 mb-1">AmalBIlm Leaderboard</h1>
+    <div class="text-muted">Rules for how the points are allocated can be found in the Rules Tab</div>
+  </div>
+</div>
+
+{% if top3|length > 0 %}
+<div class="row g-3 mb-4">
+  {% for p in top3 %}
+  <div class="col-md-4">
+    <div class="card podium-card rank-{{ p.rank }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="badge rounded-pill text-bg-dark">#{{ p.rank }}</div>
+            <h2 class="h5 mt-2 mb-1">{{ p.name }}</h2>
+            <div class="text-muted">Streak: {{ p.streak }}</div>
+          </div>
+          <div class="score-pill">
+            {{ p.total }} pts
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header fw-semibold">Full Rankings</div>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover mb-0 align-middle">
+      <thead>
+        <tr>
+          <th style="width: 90px;">Rank</th>
+          <th>Student</th>
+          <th style="width: 140px;">Total</th>
+          <!-- <th style="width: 120px;">Streak</th> -->
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in (top3 + rest) %}
+        <tr>
+          <td class="fw-semibold">#{{ r.rank }}</td>
+          <td>{{ r.name }}</td>
+          <td class="fw-semibold">{{ r.total }}</td>
+          <td>{{ r.streak }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
