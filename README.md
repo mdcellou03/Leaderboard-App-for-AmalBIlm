@@ -3,10 +3,10 @@
 This leaderboard app is designed for the AmalBIlm Program, it's features include the ability to 
 
 - Add students
-- Create a workshop session 
-- Record objective scoring per student per session (done with checkboxes for ease of evaluator)
+- Create a workshop session and edit it
+- Record objective scoring per student per session (done with checkboxes for the ease of the evaluator)
 - Compute points using the rules visible on the app
-- Displays the leaderboard with accumulated totals across sessions
+- Display the leaderboard with accumulated totals across sessions
 
 
 ## Tech Stack
