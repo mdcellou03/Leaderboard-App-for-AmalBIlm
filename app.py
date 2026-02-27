@@ -178,7 +178,7 @@ def compute_leaderboard() -> List[dict]:
 
     results = []
     for s in students:
-        streak = 0
+        attendance = 0
         total = 0
 
         for sess in sessions:
@@ -191,18 +191,18 @@ def compute_leaderboard() -> List[dict]:
 
             # Streak: consecutive sessions where present == True
             if e.present:
-                streak += 1
+                attendance += 1
             else:
-                streak = 0
+                attendance = 0
 
         results.append({
             "id": s.id,
             "name": s.name,
             "total": total,
-            "streak": streak,
+            "attendance": attendance,
         })
 
-    results.sort(key=lambda r: (-r["total"], -r["streak"], r["name"].lower()))
+    results.sort(key=lambda r: (-r["total"], -r["attendance"], r["name"].lower()))
     for i, r in enumerate(results, start=1):
         r["rank"] = i
     return results
