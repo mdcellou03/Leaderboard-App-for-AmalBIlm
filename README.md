@@ -50,5 +50,3 @@ There are five categories, and each student starts each category with **10 point
 **Total session score** = sum of all category totals.
 
 
-## Project Structure
-
