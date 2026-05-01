@@ -13,7 +13,8 @@
   <a class="btn btn-outline-secondary" href="{{ url_for('admin') }}">Back</a>
 </div>
 
-<form method="post" action="{{ url_for('save_session', session_id=sess.id) }}">
+<form method="post" action="{{ url_for('save_session', workshop_session_id=sess.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="card">
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
@@ -87,7 +88,7 @@
               <td><input type="checkbox" name="s{{ st.id }}_included_all" {% if e and e.included_all %}checked{% endif %}></td>
               <td><input type="checkbox" name="s{{ st.id }}_allocated_tasks" {% if e and e.allocated_tasks %}checked{% endif %}></td>
               <td><input type="checkbox" name="s{{ st.id }}_leadership_or_follow" {% if e and e.leadership_or_follow %}checked{% endif %}></td>
-              <td><input type="checkbox" name="s{{ st.id }}_helped_peer" {% if e and e.helped_peer %}checked{% endif %}></td>
+              <td><input type="checkbox" name="s{{ st.id }}_helped_fellow_muslim" {% if e and e.helped_fellow_muslim %}checked{% endif %}></td>
 
               <!-- Adab -->
               <td><input type="checkbox" name="s{{ st.id }}_includes_others_salaam" {% if e and e.includes_others_salaam %}checked{% endif %}></td>

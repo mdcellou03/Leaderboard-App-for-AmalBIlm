@@ -1,18 +1,57 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+#We need this in order to check whether a password matches the stored hashed password so that there's no direct password comparison
+from werkzeug.security import check_password_hash
+#Python’s random generator utils
+import secrets
+#Needed for session dates, start times, arrival times, and checking the studen'ts lateness.
 from datetime import datetime, date, time, timedelta
-from typing import Optional, Dict, List, Tuple
+from functools import wraps
+from typing import Dict, List, Tuple
 
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+#Lets us define database tables as Python classes
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf.csrf import CSRFProtect
+#Imported for the purposes of limiting login attempts
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 import os
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "dev-change-me"  # change in production
 
-# Put the SQLite file in Flask's instance folder (stable location)
+#We're creating the rate limiter here
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+)
+
+#Checks whether the app is running in production
+IS_PRODUCTION = os.environ.get("FLASK_ENV") == "production"
+
+
+#This reads the app secret key from env - which is used for sessions and CSRF tokens. 
+#Basically, if the app is run in production and there isn't any  secret key exists, we wnat it to crash immediately.
+
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    if IS_PRODUCTION:
+        raise RuntimeError("PLEASE USE SECRET_KEY for production")
+    _secret_key = secrets.token_hex(32)
+    print("WARNING: You are using a TEMPORARY development key - please set the secret key")
+
+app.config["SECRET_KEY"] = _secret_key
+
+ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
+
+if not ADMIN_PASSWORD_HASH:
+    if IS_PRODUCTION:
+        raise RuntimeError("ADMIN_PASSWORD_HASH MUST be set in production")
+    print("WARNING: ADMIN_PASSWORD_HASH not set, so admin login disabled.")
+
+# Put the SQLite file in Flask's instance folder - if it doesn't already exist, this creates the flask instance folder 
 os.makedirs(app.instance_path, exist_ok=True)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(app.instance_path, "leaderboard.db")
 
@@ -21,42 +60,49 @@ print("INSTANCE PATH:", app.instance_path)
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+csrf = CSRFProtect(app)
 
-# -----------------------------
-# Database Models
-# -----------------------------
+
+# DATABASE MODELS
+
+#Defines a database table for students
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
 
+    #Without delete-orphan, the ScoreEntry might remain in the db without being properly attached to a student
     scores = db.relationship("ScoreEntry", backref="student", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Student {self.name}>"
 
 
-class Session(db.Model):
+
+#Defines a database table for the workshop sessions
+class WorkshopSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.Time, nullable=False)
 
-    scores = db.relationship("ScoreEntry", backref="session", cascade="all, delete-orphan")
+    #This connects WorkshopSession to ScoreEntry (one WorkshopSession can have multuple ScoreEntry records)
+    scores = db.relationship("ScoreEntry", backref="workshop_session", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
-        return f"<Session {self.session_date.isoformat()} {self.start_time}>"
+        return f"<WorkshopSession {self.session_date.isoformat()} {self.start_time}>"
 
 
+#Defines a database model called ScoreEntry (a ScoreEntry represents one studetn's score for one workshop sesson)
 class ScoreEntry(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     student_id = db.Column(db.Integer, db.ForeignKey("student.id"), nullable=False)
-    session_id = db.Column(db.Integer, db.ForeignKey("session.id"), nullable=False)
+    workshop_session_id = db.Column(db.Integer, db.ForeignKey("workshop_session.id"), nullable=False)
 
-    # Presence + punctuality input
+    # Attendance and punctuality inputs
     present = db.Column(db.Boolean, default=False)
     arrival_time = db.Column(db.Time, nullable=True)  # only if present
 
-    # 2) Participation (each is cap 1)
+    # 2) Participation inputs
     meaningful_question = db.Column(db.Boolean, default=False)     # +1 (cap 1)
     distracts_others = db.Column(db.Boolean, default=False)        # -1
     connects_ideas = db.Column(db.Boolean, default=False)          # +1
@@ -64,20 +110,20 @@ class ScoreEntry(db.Model):
     learning_risk = db.Column(db.Boolean, default=False)           # +1
     answers_question = db.Column(db.Boolean, default=False)        # +1
 
-    # 3) Teamwork (each +1)
+    # 3) Teamwork
     contributed_dynamic = db.Column(db.Boolean, default=False)     # +1
     included_all = db.Column(db.Boolean, default=False)            # +1
     allocated_tasks = db.Column(db.Boolean, default=False)         # +1
     leadership_or_follow = db.Column(db.Boolean, default=False)    # +1
-    helped_peer = db.Column(db.Boolean, default=False)             # +1
+    helped_fellow_muslim = db.Column(db.Boolean, default=False)             # +1
 
-    # 4) Adab (+1/+1/-1/-1)
+    # 4) Adab
     includes_others_salaam = db.Column(db.Boolean, default=False)  # +1
     respectful_to_all = db.Column(db.Boolean, default=False)       # +1
     on_phone_unneeded = db.Column(db.Boolean, default=False)       # -1
     interrupts_or_disrespect = db.Column(db.Boolean, default=False)# -1
 
-    # 5) Deliverables (+1/+1)
+    # 5) Deliverables
     completed_activity = db.Column(db.Boolean, default=False)      # +1
     expanded_activity = db.Column(db.Boolean, default=False)       # +1
 
@@ -86,20 +132,24 @@ class ScoreEntry(db.Model):
 
     notes = db.Column(db.Text, default="")
 
+    #db.UniqueConstraint means that our database will not allow two rows with the same student_id and workshop_session_id
     __table_args__ = (
-        db.UniqueConstraint("student_id", "session_id", name="uniq_student_session"),
+        db.UniqueConstraint("student_id", "workshop_session_id", name="uniq_student_workshop_session"),
     )
 
+#Tgus creates the database tables
 with app.app_context():
     db.create_all()
 
 # -----------------------------
-# Scoring Rules (edit here)
+# Scoring Rules (COMMENT FROM AMNA: THESE WERE RULES WE DECIDED ON IN ONE OF OUR ALAMBILM MEETINGS EARLIER - IF THESE WANT TO ME CHANGED, CHANGE HERE, AND YOU WILL ALSO HAVE TO UPDATE THE RULES.HTML FILE.)
 # -----------------------------
-def compute_base_points(entry: ScoreEntry, sess: Session) -> int:
+
+# Defines a function that entry - a ScoreEntry objec, and sess - a WorkshopSession object and returns an integer score
+
+def compute_base_points(entry: ScoreEntry, sess: WorkshopSession) -> int:
     """
-    New rules:
-    Each category starts at 10 points IF the student is present.
+    As we decided, each category starts at 10 points IF the student is present.
     Categories:
       1) Punctuality
       2) Participation
@@ -107,29 +157,35 @@ def compute_base_points(entry: ScoreEntry, sess: Session) -> int:
       4) Adab
       5) Deliverables
     """
-    if not entry.present:
-        return 0  # absent = 0 (adjust if you want a different policy)
+    #IF the student us absent, their score is automatically 0 
 
-    # If present but no arrival_time, treat as 0 (or you can treat as late)
+    if not entry.present:
+        return 0  
+
+    # If present but no arrival_time, treat as 0 - this is more of a consideration for the admin 
     if not entry.arrival_time:
         return 0
 
     total = 0
 
     # ---- 1) Punctuality (start 10) ----
+
     punctuality = 10
     start_dt = datetime.combine(sess.session_date, sess.start_time)
     arrival_dt = datetime.combine(sess.session_date, entry.arrival_time)
 
-    # On-time has a 5-minute buffer (arrival <= start + 5 min)
+
+    # On-time has a 5-minute buffer as we decided
+
     if arrival_dt > (start_dt + timedelta(minutes=5)):
         punctuality -= 5  # late: -5
     total += punctuality
 
     # ---- 2) Participation (start 10) ----
+
     participation = 10
     if entry.meaningful_question:
-        participation += 1  # cap 1
+        participation += 1 
     if entry.distracts_others:
         participation -= 1
     if entry.connects_ideas:
@@ -143,12 +199,13 @@ def compute_base_points(entry: ScoreEntry, sess: Session) -> int:
     total += participation
 
     # ---- 3) Teamwork (start 10) ----
+
     teamwork = 10
     teamwork += 1 if entry.contributed_dynamic else 0
     teamwork += 1 if entry.included_all else 0
     teamwork += 1 if entry.allocated_tasks else 0
     teamwork += 1 if entry.leadership_or_follow else 0
-    teamwork += 1 if entry.helped_peer else 0
+    teamwork += 1 if entry.helped_fellow_muslim else 0
     total += teamwork
 
     # ---- 4) Adab (start 10) ----
@@ -167,14 +224,16 @@ def compute_base_points(entry: ScoreEntry, sess: Session) -> int:
 
     return total
 
+#Defines a function that calculates the leaderboard and returns a list of dictionaries - each one represents one student’s row on the leaderboard.
 
 def compute_leaderboard() -> List[dict]:
-    """Compute totals (sum of base_points) and a simple attendance streak."""
+    #Getting all students from the database - sorted alphabetically by name
     students = Student.query.order_by(Student.name.asc()).all()
-    sessions = Session.query.order_by(Session.session_date.asc(), Session.start_time.asc()).all()
-
+    #Getting all workshop sessions from the database - they are sorted oldest to newest
+    sessions = WorkshopSession.query.order_by(WorkshopSession.session_date.asc(), WorkshopSession.start_time.asc()).all()
+    #Getting all score entries from the database
     entries = ScoreEntry.query.all()
-    entry_map: Dict[Tuple[int, int], ScoreEntry] = {(e.student_id, e.session_id): e for e in entries}
+    entry_map: Dict[Tuple[int, int], ScoreEntry] = {(e.student_id, e.workshop_session_id): e for e in entries}
 
     results = []
     for s in students:
@@ -186,10 +245,8 @@ def compute_leaderboard() -> List[dict]:
             if not e:
                 continue
 
-            # Total points are just the stored base points for that session
             total += int(e.base_points or 0)
 
-            # Streak: consecutive sessions where present == True
             if e.present:
                 attendance += 1
             else:
@@ -209,9 +266,50 @@ def compute_leaderboard() -> List[dict]:
 
 
 # -----------------------------
-# Routes
+# Authentication - please feel free to change completely ~ Amna 
 # -----------------------------
 
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("admin_logged_in"):
+            flash("Please log in to access the admin area.", "error")
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.get("/login")
+def login():
+    if session.get("admin_logged_in"):
+        return redirect(url_for("admin"))
+    return render_template("login.html")
+
+
+@app.post("/login")
+@limiter.limit("5 per minute")
+def login_post():
+    password = request.form.get("password", "")
+
+    if ADMIN_PASSWORD_HASH and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        session.clear()
+        session["admin_logged_in"] = True
+        return redirect(url_for("admin"))
+    
+    flash("Incorrect password.", "error")
+    return redirect(url_for("login"))
+
+
+@app.post("/logout")
+def logout():
+    session.pop("admin_logged_in", None)
+    return redirect(url_for("leaderboard"))
+
+
+
+# -----------------------------
+# Routes
+# -----------------------------
 
 
 @app.get("/")
@@ -233,13 +331,15 @@ def rules():
 
 
 @app.get("/admin")
+@login_required
 def admin():
     students = Student.query.order_by(Student.name.asc()).all()
-    sessions = Session.query.order_by(Session.session_date.desc(), Session.start_time.desc()).all()
+    sessions = WorkshopSession.query.order_by(WorkshopSession.session_date.desc(), WorkshopSession.start_time.desc()).all()
     return render_template("admin.html", students=students, sessions=sessions)
 
 
 @app.post("/admin/add-student")
+@login_required
 def add_student():
     name = (request.form.get("name") or "").strip()
     if not name:
@@ -257,10 +357,10 @@ def add_student():
         db.session.commit()
 
         # Backfill: create ScoreEntry for all existing sessions
-        for sess in Session.query.all():
-            exists = ScoreEntry.query.filter_by(student_id=st.id, session_id=sess.id).first()
+        for sess in WorkshopSession.query.all():
+            exists = ScoreEntry.query.filter_by(student_id=st.id, workshop_session_id=sess.id).first()
             if not exists:
-                db.session.add(ScoreEntry(student_id=st.id, session_id=sess.id))
+                db.session.add(ScoreEntry(student_id=st.id, workshop_session_id=sess.id))
         db.session.commit()
 
         flash(f"Added student: {name}", "ok")
@@ -270,11 +370,12 @@ def add_student():
     except Exception as e:
         db.session.rollback()
         print("ERROR adding student:", repr(e))
-        flash(f"Error adding student: {e}", "error")
+        flash("Something went wrong while adding the student.", "error")
         return redirect(url_for("admin"))
 
 
 @app.post("/admin/add-session")
+@login_required
 def add_session():
     if Student.query.count() == 0:
         flash("Add students first (no students found).", "error")
@@ -287,29 +388,34 @@ def add_session():
         flash("Session date and start time are required.", "error")
         return redirect(url_for("admin"))
 
-    sess_date = date.fromisoformat(date_str)
-    start_t = time.fromisoformat(time_str)
+    try:
+        sess_date = date.fromisoformat(date_str)
+        start_t = time.fromisoformat(time_str)
+    except ValueError:
+        flash("Invalid date or time format.", "error")
+        return redirect(url_for("admin"))
 
-    sess = Session(session_date=sess_date, start_time=start_t)
+    sess = WorkshopSession(session_date=sess_date, start_time=start_t)
     db.session.add(sess)
     db.session.commit()
 
     # Pre-create entries for all students for easier data entry
     students = Student.query.all()
     for s in students:
-        e = ScoreEntry(student_id=s.id, session_id=sess.id)
+        e = ScoreEntry(student_id=s.id, workshop_session_id=sess.id)
         db.session.add(e)
     db.session.commit()
 
     flash("Session created. Now enter scores.", "ok")
-    return redirect(url_for("admin_session", session_id=sess.id))
+    return redirect(url_for("admin_session", workshop_session_id=sess.id))
 
 
-@app.get("/admin/session/<int:session_id>")
-def admin_session(session_id: int):
-    sess = Session.query.get_or_404(session_id)
+@app.get("/admin/session/<int:workshop_session_id>")
+@login_required
+def admin_session(workshop_session_id: int):
+    sess = WorkshopSession.query.get_or_404(workshop_session_id)
     students = Student.query.order_by(Student.name.asc()).all()
-    entries = ScoreEntry.query.filter_by(session_id=session_id).all()
+    entries = ScoreEntry.query.filter_by(workshop_session_id=workshop_session_id).all()
     entry_by_student = {e.student_id: e for e in entries}
     return render_template(
         "admin_session.html",
@@ -332,15 +438,16 @@ def _bool_field(name: str) -> bool:
     return request.form.get(name) == "on"
 
 
-@app.post("/admin/session/<int:session_id>/save")
-def save_session(session_id: int):
-    sess = Session.query.get_or_404(session_id)
+@app.post("/admin/session/<int:workshop_session_id>/save")
+@login_required
+def save_session(workshop_session_id: int):
+    sess = WorkshopSession.query.get_or_404(workshop_session_id)
     students = Student.query.all()
 
     for s in students:
-        e: ScoreEntry = ScoreEntry.query.filter_by(session_id=session_id, student_id=s.id).first()
+        e: ScoreEntry = ScoreEntry.query.filter_by(workshop_session_id=workshop_session_id, student_id=s.id).first()
         if not e:
-            e = ScoreEntry(session_id=session_id, student_id=s.id)
+            e = ScoreEntry(workshop_session_id=workshop_session_id, student_id=s.id)
             db.session.add(e)
 
         prefix = f"s{s.id}_"
@@ -348,7 +455,12 @@ def save_session(session_id: int):
         e.present = _bool_field(prefix + "present")
 
         arrival = request.form.get(prefix + "arrival_time", "").strip()
-        e.arrival_time = time.fromisoformat(arrival) if (arrival and e.present) else None
+
+        try:
+            e.arrival_time = time.fromisoformat(arrival) if (arrival and e.present) else None
+        except ValueError:
+            flash(f"Invalid arrival time for {s.name}.", "error")
+            return redirect(url_for("admin_session", workshop_session_id=workshop_session_id))
 
         # Participation
         e.meaningful_question = _bool_field(prefix + "meaningful_question")
@@ -363,7 +475,7 @@ def save_session(session_id: int):
         e.included_all = _bool_field(prefix + "included_all")
         e.allocated_tasks = _bool_field(prefix + "allocated_tasks")
         e.leadership_or_follow = _bool_field(prefix + "leadership_or_follow")
-        e.helped_peer = _bool_field(prefix + "helped_peer")
+        e.helped_fellow_muslim = _bool_field(prefix + "helped_fellow_muslim")
 
         # Adab
         e.includes_others_salaam = _bool_field(prefix + "includes_others_salaam")
@@ -382,8 +494,9 @@ def save_session(session_id: int):
 
     db.session.commit()
     flash("Session saved.", "ok")
-    return redirect(url_for("admin_session", session_id=session_id))
+    return redirect(url_for("admin_session", workshop_session_id=workshop_session_id))
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    #This starts the Flask development server
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1")

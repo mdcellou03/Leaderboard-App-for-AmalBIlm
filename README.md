@@ -9,10 +9,37 @@ This leaderboard app is designed for the AmalBIlm Program, it's features include
 - Display the leaderboard with accumulated totals across sessions
 
 
+## Setup
+
+1. Clone the repo 
+
+2. Create and activate a virtual environment
+
+3. Install dependencies
+
+4. Create a `.env` file from the template (this is the file called `.env.example`):
+
+   Then fill in both values:
+   - **SECRET_KEY** — feel free to run this and paste the output:``` python3 -c "import secrets; print(secrets.token_hex(32))"```
+   - **ADMIN_PASSWORD_HASH** — First CHOOSE a password, then run this (MAKE SURE YOU ARE REPLACING `yourpassword`) and paste the output ``` python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('yourpassword', method='pbkdf2:sha256'))"```
+
+5. Run the app``` python app.py```
+
+   Please note that the database file (`instance/leaderboard.db`) is created automatically on first run.
+
+> **Note:** The admin area at `/admin` is password-protected. Click "Admin" in the navbar and enter the password you set in `.env`.
+
+
 ## Tech Stack
 
-The tech stack consists of Python, Flask for the web server and routing, and Flask-SQLAlchemy and SQLite for the database.  
-
+| | |
+|---|---|
+| Language | Python 3.9 |
+| Web framework | Flask 3.0.3 |
+| Database ORM | Flask-SQLAlchemy 3.1.1 |
+| Database | SQLite (`instance/leaderboard.db`) |
+| CSS | Bootstrap 5.3.3 |
+| Production server | gunicorn 22.0.0 |
 
 ## Objective Scoring Rules
 
@@ -48,5 +75,35 @@ There are five categories, and each student starts each category with **10 point
 - Expanded beyond workshop content: **+1**
 
 **Total session score** = sum of all category totals.
+
+
+## Author
+
+Amna Adnan
+
+## License 
+
+MIT License
+
+Copyright (c) 2026 Amna Adnan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 
 
