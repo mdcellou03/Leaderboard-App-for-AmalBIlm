@@ -47,11 +47,20 @@ if not _secret_key:
 app.config["SECRET_KEY"] = _secret_key
 
 ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
+STUDENT_CODE_PREFIX = os.environ.get("STUDENT_CODE_PREFIX", "STU").strip().upper() or "STU"
 
 if not ADMIN_PASSWORD_HASH:
     if IS_PRODUCTION:
         raise RuntimeError("ADMIN_PASSWORD_HASH MUST be set in production")
     print("WARNING: ADMIN_PASSWORD_HASH not set, so admin login disabled.")
+
+
+def student_code(student_id: int) -> str:
+    """Stable public ID used to distinguish students and match Kahoot results."""
+    return f"{STUDENT_CODE_PREFIX}-{student_id:03d}"
+
+
+app.jinja_env.globals["student_code"] = student_code
 
 # Put the SQLite file in Flask's instance folder - if it doesn't already exist, this creates the flask instance folder 
 os.makedirs(app.instance_path, exist_ok=True)
@@ -239,7 +248,8 @@ def compute_leaderboard() -> List[dict]:
 
     results = []
     for s in students:
-        attendance = 0
+        attended_sessions = 0
+        current_streak = 0
         total = 0
 
         for sess in sessions:
@@ -250,19 +260,21 @@ def compute_leaderboard() -> List[dict]:
             total += int(e.base_points or 0)
 
             if e.present:
-                attendance += 1
+                attended_sessions += 1
+                current_streak += 1
             else:
-                attendance = 0
+                current_streak = 0
 
         results.append({
             "id": s.id,
-            "code": f"AB-{s.id:03d}",
+            "code": student_code(s.id),
             "name": s.name,
             "total": total,
-            "attendance": attendance,
+            "attended_sessions": attended_sessions,
+            "current_streak": current_streak,
         })
 
-    results.sort(key=lambda r: (-r["total"], -r["attendance"], r["name"].lower()))
+    results.sort(key=lambda r: (-r["total"], -r["current_streak"], r["name"].lower()))
     for i, r in enumerate(results, start=1):
         r["rank"] = i
     return results
