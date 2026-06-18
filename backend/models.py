@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from extensions import db
+from backend.extensions import db
 
 
 class Student(db.Model):

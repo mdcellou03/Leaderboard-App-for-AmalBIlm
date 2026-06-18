@@ -6,9 +6,9 @@ import secrets
 from dotenv import load_dotenv
 from flask import Flask
 
-from config import database_uri
-from extensions import csrf, db, limiter, migrate
-from services.students import student_code
+from backend.config import database_uri
+from backend.extensions import csrf, db, limiter, migrate
+from backend.services.students import student_code
 
 load_dotenv()
 
@@ -43,15 +43,17 @@ def create_app() -> Flask:
     db.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app, db, directory=os.path.join(os.path.dirname(__file__), "migrations"))
     app.jinja_env.globals["student_code"] = student_code
 
-    from models import Cohort, ScoreEntry, Student, WorkshopSession
-    from routes.admin import register_admin_routes
-    from routes.auth import register_auth_routes
-    from routes.public import register_public_routes
+    from backend.models import Cohort, ScoreEntry, Student, WorkshopSession
+    from backend.routes.admin import register_admin_routes
+    from backend.routes.api import register_api_routes
+    from backend.routes.auth import register_auth_routes
+    from backend.routes.public import register_public_routes
 
     register_auth_routes(app)
+    register_api_routes(app)
     register_public_routes(app)
     register_admin_routes(app)
 

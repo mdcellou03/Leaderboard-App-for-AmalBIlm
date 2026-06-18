@@ -5,10 +5,10 @@ from typing import Optional
 
 from flask import Flask, flash, redirect, render_template, request, url_for
 
-from extensions import db
-from models import Cohort, ScoreEntry, Student, WorkshopSession
-from routes.auth import login_required
-from services.scoring import compute_base_points
+from backend.extensions import db
+from backend.models import Cohort, ScoreEntry, Student, WorkshopSession
+from backend.routes.auth import login_required
+from backend.services.scoring import compute_base_points
 
 
 def register_admin_routes(app: Flask) -> None:

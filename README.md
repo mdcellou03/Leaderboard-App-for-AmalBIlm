@@ -1,43 +1,81 @@
-# AmalBIlm-Leaderboard-App
+# AmalBIlm Leaderboard App
 
-This leaderboard app is designed for the AmalBIlm Program, it's features include the ability to 
+This app supports the AmalBIlm workshop program by tracking students, cohorts, workshop sessions, scoring, and leaderboard results.
+
+Current backend features:
 
 - Add students
-- Create a workshop session and edit it
-- Record objective scoring per student per session (done with checkboxes for the ease of the evaluator)
-- Compute points using the rules visible on the app
-- Display the leaderboard with accumulated totals across sessions
+- Add cohorts such as `Spring 2026`
+- Create workshop sessions and assign them to cohorts
+- Record objective scoring per student per session
+- Compute points using the app's scoring rules
+- Display a cohort-filterable leaderboard
+- Expose JSON API endpoints for the upcoming React frontend
 
+## Project Structure
 
-## Setup
-
-1. Clone the repo 
-
-2. Create and activate a virtual environment
-
-3. Install dependencies
-
-4. Create a `.env` file from the template (this is the file called `.env.example`):
-
-   Then fill in both values:
-   - **SECRET_KEY** — feel free to run this and paste the output:``` python3 -c "import secrets; print(secrets.token_hex(32))"```
-   - **ADMIN_PASSWORD_HASH** — First CHOOSE a password, then run this (MAKE SURE YOU ARE REPLACING `yourpassword`) and paste the output ``` python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('yourpassword', method='pbkdf2:sha256'))"```
-
-5. Create or update the database schema:
-
-```bash
-flask --app app db upgrade
+```text
+backend/              Flask backend, API, database models, migrations, and legacy Jinja pages
+backend/routes/       URL handlers for auth, admin pages, public pages, and API endpoints
+backend/services/     Business logic such as scoring and student ID generation
+backend/templates/    Legacy Flask/Jinja HTML pages kept while React is introduced
+backend/static/       Legacy CSS/assets for the Jinja pages
+backend/migrations/   Alembic database migrations
+instance/             Local runtime data, including the SQLite database
 ```
 
-6. Run the app``` python app.py```
+The next major step is adding a `frontend/` React app that consumes the backend API.
 
-   Please note that the local database file (`instance/leaderboard.db`) is created by the migration command.
+## Backend Setup
+
+1. Create and activate a virtual environment.
+
+2. Install backend dependencies:
+
+```bash
+python -m pip install -r backend/requirements.txt
+```
+
+3. Copy `.env.example` to `.env`, then fill in:
+
+```env
+SECRET_KEY=
+ADMIN_PASSWORD_HASH=
+DATABASE_URL=
+STUDENT_CODE_PREFIX=STU
+```
+
+Generate a `SECRET_KEY`:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Generate an admin password hash:
+
+```bash
+python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('yourpassword', method='pbkdf2:sha256'))"
+```
+
+4. Create or update the database schema:
+
+```bash
+flask --app backend.app db upgrade
+```
+
+5. Run the backend:
+
+```bash
+flask --app backend.app run
+```
+
+The local database file lives at `instance/leaderboard.db` and is created by the migration command.
 
 ## Database
 
-By default, local development uses SQLite at `instance/leaderboard.db`.
+Local development uses SQLite by default.
 
-For production, set `DATABASE_URL` in the environment. A managed PostgreSQL database is recommended for deployment:
+Production should use a managed PostgreSQL database by setting `DATABASE_URL`:
 
 ```env
 DATABASE_URL=postgresql://user:password@host:5432/database
@@ -46,72 +84,87 @@ DATABASE_URL=postgresql://user:password@host:5432/database
 Schema changes are tracked with Flask-Migrate/Alembic:
 
 ```bash
-flask --app app db migrate -m "Describe the schema change"
-flask --app app db upgrade
+flask --app backend.app db migrate -m "Describe the schema change"
+flask --app backend.app db upgrade
 ```
 
-> **Note:** The admin area at `/admin` is password-protected. Click "Admin" in the navbar and enter the password you set in `.env`.
+## API Endpoints
 
+Initial read endpoints for the React frontend:
+
+```text
+GET /api/health
+GET /api/cohorts
+GET /api/students
+GET /api/sessions
+GET /api/leaderboard
+GET /api/leaderboard?cohort_id=1
+```
 
 ## Tech Stack
 
-| | |
+| Area | Tool |
 |---|---|
-| Language | Python 3.9 |
-| Web framework | Flask 3.0.3 |
-| Database ORM | Flask-SQLAlchemy 3.1.1 |
-| Database | SQLite (`instance/leaderboard.db`) |
-| CSS | Bootstrap 5.3.3 |
-| Production server | gunicorn 22.0.0 |
+| Backend language | Python 3 |
+| Backend framework | Flask |
+| Database ORM | Flask-SQLAlchemy |
+| Migrations | Flask-Migrate / Alembic |
+| Local database | SQLite |
+| Production database target | PostgreSQL |
+| Frontend today | Legacy Flask/Jinja templates |
+| Frontend target | React consuming Flask JSON APIs |
+| Production server | gunicorn |
 
 ## Objective Scoring Rules
 
-There are five categories, and each student starts each category with **10 points** (only when the student is marked **Present**).
+Each student starts with 10 points for each category when marked present.
 
-### 1) Punctuality (start 10)
-- On-time (5-minute buffer): no penalty
-- Late (> 5 minutes): **-5**
+### 1. Punctuality
 
-### 2) Participation (start 10)
-- Asks meaningful questions (cap 1): **+1**
-- Distracts others: **-1**
-- Makes a connection across ideas: **+1**
-- Challenges an assumption constructively: **+1**
-- Tried something new / took a learning risk: **+1**
-- Answers a question: **+1**
+- On time with a 5-minute buffer: no penalty
+- Late by more than 5 minutes: -5
 
-### 3) Teamwork (start 10)
-- Contributed to team dynamic: **+1**
-- Made sure all members were included: **+1**
-- Allocated tasks to members: **+1**
-- Demonstrated leadership and/or followed the lead well: **+1**
-- Helped a peer unprompted: **+1**
+### 2. Participation
 
-### 4) Adab (start 10)
-- Includes others / spreads salaam / reaches out if someone is alone: **+1**
-- Treats classmates/instructor/volunteers with respect: **+1**
-- On phone/electronics when not required: **-1**
-- Interrupts / speaks over others / disrespectful communication style: **-1**
+- Asked meaningful questions: +1
+- Distracted others: -1
+- Made a connection across ideas: +1
+- Challenged an assumption constructively: +1
+- Tried something new or took a learning risk: +1
+- Answered a question: +1
 
-### 5) Deliverables (start 10)
-- Completion of activity: **+1**
-- Expanded beyond workshop content: **+1**
+### 3. Teamwork
 
-**Total session score** = sum of all category totals.
+- Contributed to team dynamic: +1
+- Made sure all team members were included: +1
+- Allocated tasks to members: +1
+- Demonstrated leadership and/or followed the lead well: +1
+- Helped a peer unprompted: +1
 
+### 4. Adab
+
+- Includes others, spreads salaam, reaches out if someone is alone: +1
+- Treats classmates, instructors, and volunteers with respect: +1
+- Uses phone/electronics when not required: -1
+- Interrupts, speaks over others, or uses disrespectful communication: -1
+
+### 5. Deliverables
+
+- Completed the activity: +1
+- Expanded beyond workshop content: +1
 
 ## Author
 
 Amna Adnan
 
-## License 
+## License
 
 MIT License
 
 Copyright (c) 2026 Amna Adnan
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the “Software”), to deal
+of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
@@ -120,13 +173,10 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
-
