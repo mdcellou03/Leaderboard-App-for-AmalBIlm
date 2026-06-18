@@ -23,9 +23,32 @@ This leaderboard app is designed for the AmalBIlm Program, it's features include
    - **SECRET_KEY** — feel free to run this and paste the output:``` python3 -c "import secrets; print(secrets.token_hex(32))"```
    - **ADMIN_PASSWORD_HASH** — First CHOOSE a password, then run this (MAKE SURE YOU ARE REPLACING `yourpassword`) and paste the output ``` python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('yourpassword', method='pbkdf2:sha256'))"```
 
-5. Run the app``` python app.py```
+5. Create or update the database schema:
 
-   Please note that the database file (`instance/leaderboard.db`) is created automatically on first run.
+```bash
+flask --app app db upgrade
+```
+
+6. Run the app``` python app.py```
+
+   Please note that the local database file (`instance/leaderboard.db`) is created by the migration command.
+
+## Database
+
+By default, local development uses SQLite at `instance/leaderboard.db`.
+
+For production, set `DATABASE_URL` in the environment. A managed PostgreSQL database is recommended for deployment:
+
+```env
+DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+Schema changes are tracked with Flask-Migrate/Alembic:
+
+```bash
+flask --app app db migrate -m "Describe the schema change"
+flask --app app db upgrade
+```
 
 > **Note:** The admin area at `/admin` is password-protected. Click "Admin" in the navbar and enter the password you set in `.env`.
 

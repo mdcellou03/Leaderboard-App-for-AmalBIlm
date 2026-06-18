@@ -6,8 +6,8 @@ import secrets
 from dotenv import load_dotenv
 from flask import Flask
 
-from extensions import csrf, db, limiter
-from services.database import ensure_database_schema
+from config import database_uri
+from extensions import csrf, db, limiter, migrate
 from services.students import student_code
 
 load_dotenv()
@@ -36,23 +36,20 @@ def create_app() -> Flask:
     app.config.update(
         SECRET_KEY=secret_key,
         ADMIN_PASSWORD_HASH=admin_password_hash,
-        SQLALCHEMY_DATABASE_URI="sqlite:///" + os.path.join(app.instance_path, "leaderboard.db"),
+        SQLALCHEMY_DATABASE_URI=database_uri(app.instance_path),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
     )
 
     db.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)
+    migrate.init_app(app, db)
     app.jinja_env.globals["student_code"] = student_code
 
     from models import Cohort, ScoreEntry, Student, WorkshopSession
     from routes.admin import register_admin_routes
     from routes.auth import register_auth_routes
     from routes.public import register_public_routes
-
-    with app.app_context():
-        db.create_all()
-        ensure_database_schema()
 
     register_auth_routes(app)
     register_public_routes(app)
