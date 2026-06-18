@@ -26,6 +26,31 @@ instance/             Local runtime data, including the SQLite database
 
 The next major step is adding a `frontend/` React app that consumes the backend API.
 
+## Frontend Setup
+
+The React frontend lives in `frontend/`.
+
+Install frontend dependencies:
+
+```bash
+cd frontend
+npm install
+```
+
+Run the React development server:
+
+```bash
+npm run dev
+```
+
+During development, Vite proxies `/api` requests to the Flask backend at `http://127.0.0.1:5000`.
+
+Build the production frontend:
+
+```bash
+npm run build
+```
+
 ## Backend Setup
 
 1. Create and activate a virtual environment.
