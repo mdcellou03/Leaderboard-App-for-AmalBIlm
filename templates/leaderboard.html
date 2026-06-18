@@ -38,6 +38,7 @@
         <tr>
           <th style="width: 90px;">Rank</th>
           <th>Student</th>
+          <th style="width: 120px;">ID</th>
           <th style="width: 140px;">Total</th>
           <th style="width: 120px;">Attendance</th>
         </tr>
@@ -47,6 +48,7 @@
         <tr>
           <td class="fw-semibold">#{{ r.rank }}</td>
           <td>{{ r.name }}</td>
+          <td><code>{{ r.code }}</code></td>
           <td class="fw-semibold">{{ r.total }}</td>
           <td>{{ r.attendance }}</td>
         </tr>

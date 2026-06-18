@@ -1,4 +1,6 @@
 from __future__ import annotations
+from dotenv import load_dotenv
+
 
 #We need this in order to check whether a password matches the stored hashed password so that there's no direct password comparison
 from werkzeug.security import check_password_hash
@@ -18,7 +20,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 import os
-
+load_dotenv()
 app = Flask(__name__)
 
 #We're creating the rate limiter here
@@ -254,6 +256,7 @@ def compute_leaderboard() -> List[dict]:
 
         results.append({
             "id": s.id,
+            "code": f"AB-{s.id:03d}",
             "name": s.name,
             "total": total,
             "attendance": attendance,
