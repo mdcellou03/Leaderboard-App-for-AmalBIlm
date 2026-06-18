@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from models import ScoreEntry, Student, WorkshopSession
 from services.students import student_code
@@ -62,9 +62,13 @@ def compute_base_points(entry: ScoreEntry, workshop_session: WorkshopSession) ->
     return total
 
 
-def compute_leaderboard() -> List[dict]:
+def compute_leaderboard(cohort_id: Optional[int] = None) -> List[dict]:
     students = Student.query.order_by(Student.name.asc()).all()
-    sessions = WorkshopSession.query.order_by(
+    sessions_query = WorkshopSession.query
+    if cohort_id is not None:
+        sessions_query = sessions_query.filter_by(cohort_id=cohort_id)
+
+    sessions = sessions_query.order_by(
         WorkshopSession.session_date.asc(),
         WorkshopSession.start_time.asc(),
     ).all()

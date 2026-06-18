@@ -2,9 +2,30 @@
 {% block content %}
 <div class="d-flex align-items-end justify-content-between mb-3">
   <div>
-    <h1 class="h3 mb-1">AmalBIlm Leaderboard</h1>
+    <h1 class="h3 mb-1">
+      AmalBIlm Leaderboard
+      {% if selected_cohort %}
+        <span class="text-muted">/ {{ selected_cohort.name }}</span>
+      {% endif %}
+    </h1>
     <div class="text-muted">Rules for how the points are allocated can be found in the Rules Tab</div>
   </div>
+  {% if cohorts %}
+    <form method="get" action="{{ url_for('leaderboard') }}" class="d-flex align-items-end gap-2">
+      <div>
+        <label class="form-label small text-muted mb-1" for="cohort_id">Cohort</label>
+        <select class="form-select" id="cohort_id" name="cohort_id" onchange="this.form.submit()">
+          <option value="">All cohorts</option>
+          {% for cohort in cohorts %}
+            <option value="{{ cohort.id }}" {% if selected_cohort_id == cohort.id %}selected{% endif %}>
+              {{ cohort.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button class="btn btn-outline-secondary" type="submit">Apply</button></noscript>
+    </form>
+  {% endif %}
 </div>
 
 {% if top3|length > 0 %}
@@ -17,7 +38,7 @@
           <div>
             <div class="badge rounded-pill text-bg-dark">#{{ p.rank }}</div>
             <h2 class="h5 mt-2 mb-1">{{ p.name }}</h2>
-            <div class="text-muted">Attended: {{ p.attended_sessions }} · Streak: {{ p.current_streak }}</div>
+            <div class="text-muted">Attended: {{ p.attended_sessions }} &middot; Streak: {{ p.current_streak }}</div>
           </div>
           <div class="score-pill">
             {{ p.total }} pts

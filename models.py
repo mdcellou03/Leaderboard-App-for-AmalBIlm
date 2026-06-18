@@ -13,8 +13,19 @@ class Student(db.Model):
         return f"<Student {self.name}>"
 
 
+class Cohort(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+
+    sessions = db.relationship("WorkshopSession", backref="cohort")
+
+    def __repr__(self) -> str:
+        return f"<Cohort {self.name}>"
+
+
 class WorkshopSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"), nullable=True)
     session_date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.Time, nullable=False)
 

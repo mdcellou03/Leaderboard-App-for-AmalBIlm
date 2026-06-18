@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import date, time
+from typing import Optional
 
 from flask import Flask, flash, redirect, render_template, request, url_for
 
 from extensions import db
-from models import ScoreEntry, Student, WorkshopSession
+from models import Cohort, ScoreEntry, Student, WorkshopSession
 from routes.auth import login_required
 from services.scoring import compute_base_points
 
@@ -14,12 +15,31 @@ def register_admin_routes(app: Flask) -> None:
     @app.get("/admin")
     @login_required
     def admin():
+        cohorts = Cohort.query.order_by(Cohort.name.asc()).all()
         students = Student.query.order_by(Student.name.asc()).all()
         sessions = WorkshopSession.query.order_by(
             WorkshopSession.session_date.desc(),
             WorkshopSession.start_time.desc(),
         ).all()
-        return render_template("admin.html", students=students, sessions=sessions)
+        return render_template("admin.html", cohorts=cohorts, students=students, sessions=sessions)
+
+    @app.post("/admin/add-cohort")
+    @login_required
+    def add_cohort():
+        name = (request.form.get("name") or "").strip()
+        if not name:
+            flash("Cohort name is required.", "error")
+            return redirect(url_for("admin"))
+
+        existing = Cohort.query.filter_by(name=name).first()
+        if existing:
+            flash("That cohort already exists.", "error")
+            return redirect(url_for("admin"))
+
+        db.session.add(Cohort(name=name))
+        db.session.commit()
+        flash(f"Added cohort: {name}", "ok")
+        return redirect(url_for("admin"))
 
     @app.post("/admin/add-student")
     @login_required
@@ -65,6 +85,7 @@ def register_admin_routes(app: Flask) -> None:
 
         date_str = request.form.get("session_date")
         time_str = request.form.get("start_time")
+        cohort_id = _optional_int_field("cohort_id")
 
         if not date_str or not time_str:
             flash("Session date and start time are required.", "error")
@@ -77,7 +98,15 @@ def register_admin_routes(app: Flask) -> None:
             flash("Invalid date or time format.", "error")
             return redirect(url_for("admin"))
 
-        workshop_session = WorkshopSession(session_date=session_date, start_time=start_time)
+        if cohort_id and not db.session.get(Cohort, cohort_id):
+            flash("Selected cohort does not exist.", "error")
+            return redirect(url_for("admin"))
+
+        workshop_session = WorkshopSession(
+            cohort_id=cohort_id,
+            session_date=session_date,
+            start_time=start_time,
+        )
         db.session.add(workshop_session)
         db.session.commit()
 
@@ -159,3 +188,14 @@ def register_admin_routes(app: Flask) -> None:
 
 def _bool_field(name: str) -> bool:
     return request.form.get(name) == "on"
+
+
+def _optional_int_field(name: str) -> Optional[int]:
+    raw = request.form.get(name, "").strip()
+    if not raw:
+        return None
+
+    try:
+        return int(raw)
+    except ValueError:
+        return None

@@ -5,6 +5,7 @@
     <h1 class="h3 mb-1">Enter Scores</h1>
     <div class="text-muted">
       Session: {{ sess.session_date.isoformat() }} @ {{ sess.start_time.strftime("%H:%M") }}
+      &middot; {{ sess.cohort.name if sess.cohort else "Unassigned" }}
     </div>
     <div class="text-muted small mt-1">
       Each category starts at <b>10</b> points when present. Check boxes to add/subtract.

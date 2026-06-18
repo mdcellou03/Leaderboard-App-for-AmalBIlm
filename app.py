@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from flask import Flask
 
 from extensions import csrf, db, limiter
+from services.database import ensure_database_schema
 from services.students import student_code
 
 load_dotenv()
@@ -44,13 +45,14 @@ def create_app() -> Flask:
     limiter.init_app(app)
     app.jinja_env.globals["student_code"] = student_code
 
-    from models import ScoreEntry, Student, WorkshopSession
+    from models import Cohort, ScoreEntry, Student, WorkshopSession
     from routes.admin import register_admin_routes
     from routes.auth import register_auth_routes
     from routes.public import register_public_routes
 
     with app.app_context():
         db.create_all()
+        ensure_database_schema()
 
     register_auth_routes(app)
     register_public_routes(app)
