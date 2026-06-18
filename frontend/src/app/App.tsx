@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Trophy, Tv, Users, Calendar,
   ClipboardList, Zap, BarChart2, ChevronDown,
@@ -7,6 +7,7 @@ import {
   Clock, Download, FileText, Link2, ExternalLink,
   ChevronRight, Save, Award, BookOpen,
 } from "lucide-react";
+import { fetchCoreData, type ApiCohort, type ApiLeaderboardRow, type ApiSession, type ApiStudent } from "./api";
 
 // ============================================================
 // TYPES
@@ -26,6 +27,7 @@ interface KahootQuestion { id: string; text: string; timeLimit: number; points: 
 interface ScreenProps {
   activeCohort: string;
   setActiveCohort: (id: string) => void;
+  cohorts: Cohort[];
   students: Student[];
   allStudents: Student[];
   sessions: Session[];
@@ -150,6 +152,60 @@ const initGrades = (students: Student[]): Record<string, SessionGrade> => {
 
 const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+const mapApiCohorts = (cohorts: ApiCohort[], students: ApiStudent[], sessions: ApiSession[]): Cohort[] => {
+  if (!cohorts.length) return COHORTS;
+
+  return cohorts.map(cohort => {
+    const id = String(cohort.id);
+    const sessionCount = sessions.filter(session => session.cohort_id === cohort.id).length;
+
+    return {
+      id,
+      name: cohort.name,
+      term: `${cohort.name} Cohort`,
+      status: "active",
+      sessionCount,
+      studentCount: students.length,
+    };
+  });
+};
+
+const mapApiStudents = (leaderboard: ApiLeaderboardRow[], activeCohort: string): Student[] => {
+  if (!leaderboard.length) return STUDENTS;
+
+  return leaderboard.map((row, index) => ({
+    id: String(row.id),
+    code: row.code,
+    name: row.name,
+    cohortId: activeCohort,
+    playerId: row.code,
+    attendance: row.attended_sessions,
+    totalSessions: Math.max(row.attended_sessions, row.current_streak),
+    totalPoints: row.total,
+    rank: row.rank,
+    avatarId: index,
+    badges: [],
+    streak: row.current_streak,
+    joinDate: "",
+  }));
+};
+
+const mapApiSessions = (sessions: ApiSession[]): Session[] => {
+  if (!sessions.length) return SESSIONS;
+
+  return sessions.map((session, index) => ({
+    id: String(session.id),
+    cohortId: session.cohort_id ? String(session.cohort_id) : "unassigned",
+    num: sessions.length - index,
+    title: session.cohort_name ? `${session.cohort_name} Session` : "Workshop Session",
+    date: session.date,
+    presenter: "TBD",
+    status: session.scored_entries > 0 ? "review" : "draft",
+    kahootStatus: "questions-ready",
+    notes: `${session.scored_entries}/${session.score_entries} score entries completed.`,
+  }));
+};
 
 // ============================================================
 // PIXEL AVATARS
@@ -322,14 +378,15 @@ const NAV_GROUPS = [
   { label: "Tools",     items: [{ id: "kahoot"      as AdminScreen, icon: Zap,             label: "Kahoot"     }, { id: "reports" as AdminScreen, icon: BarChart2, label: "Reports"  }] },
 ];
 
-const AdminSidebar = ({ currentScreen, setScreen, activeCohort, setActiveCohort, onTVMode }: {
+const AdminSidebar = ({ currentScreen, setScreen, activeCohort, setActiveCohort, cohorts, onTVMode }: {
   currentScreen: AdminScreen;
   setScreen: (s: AdminScreen) => void;
   activeCohort: string;
   setActiveCohort: (id: string) => void;
+  cohorts: Cohort[];
   onTVMode: () => void;
 }) => {
-  const cohort = COHORTS.find(c => c.id === activeCohort);
+  const cohort = cohorts.find(c => c.id === activeCohort);
   return (
     <div style={{ width: 200, minWidth: 200, background: "#0F2020", display: "flex", flexDirection: "column", height: "100vh", position: "fixed", left: 0, top: 0, zIndex: 50, borderRight: "1px solid rgba(255,255,255,0.06)" }}>
       {/* Logo */}
@@ -350,7 +407,7 @@ const AdminSidebar = ({ currentScreen, setScreen, activeCohort, setActiveCohort,
           onChange={e => setActiveCohort(e.target.value)}
           style={{ width: "100%", background: "#1A3030", color: "#A8C8B0", border: "1px solid #2A4040", borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer", fontFamily: "monospace" }}
         >
-          {COHORTS.map(c => (
+          {cohorts.map(c => (
             <option key={c.id} value={c.id}>
               {c.name}{c.status === "archived" ? " (archived)" : ""}
             </option>
@@ -523,8 +580,8 @@ const TVMode = ({ students, session, intermission, setIntermission, onExit }: {
 // DASHBOARD
 // ============================================================
 
-const DashboardScreen = ({ activeCohort, students, sessions, setScreen, setSelectedSessionId }: ScreenProps) => {
-  const cohort = COHORTS.find(c => c.id === activeCohort);
+const DashboardScreen = ({ activeCohort, cohorts, students, sessions, setScreen, setSelectedSessionId }: ScreenProps) => {
+  const cohort = cohorts.find(c => c.id === activeCohort);
   const completed   = sessions.filter(s => s.status === "published" || s.status === "review" || s.status === "live");
   const upcoming    = sessions.find(s => s.status === "draft" || s.status === "ready");
   const recent      = [...completed].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
@@ -677,7 +734,7 @@ const LeaderboardScreen = (props: ScreenProps) => {
 
       {/* Cohort pills */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {COHORTS.map(c => (
+        {props.cohorts.map(c => (
           <button key={c.id} onClick={() => setFilterCohort(c.id)}
             style={{ padding: "6px 14px", borderRadius: 20, border: filterCohort === c.id ? "none" : "1px solid var(--border)", background: filterCohort === c.id ? "var(--primary)" : "var(--card)", color: filterCohort === c.id ? "var(--primary-foreground)" : "var(--foreground)", cursor: "pointer", fontSize: 13, fontWeight: filterCohort === c.id ? 600 : 400 }}>
             {c.name}
@@ -725,7 +782,7 @@ const LeaderboardScreen = (props: ScreenProps) => {
                 {sorted.map((stu, i) => {
                   const rank  = i + 1;
                   const color = rank <= 3 ? RANK_COLORS[rank - 1] : "var(--muted-foreground)";
-                  const coh   = COHORTS.find(c => c.id === stu.cohortId);
+                  const coh   = props.cohorts.find(c => c.id === stu.cohortId);
                   return (
                     <tr key={stu.id}>
                       <td style={{ ...TD, fontWeight: 700, color, fontFamily: "monospace" }}>#{rank}</td>
@@ -851,7 +908,7 @@ const StudentsScreen = (props: ScreenProps) => {
       {/* Filters */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6 }}>
-          {[{ id: "all", name: "All Cohorts" }, ...COHORTS].map(c => (
+          {[{ id: "all", name: "All Cohorts" }, ...props.cohorts].map(c => (
             <button key={c.id} onClick={() => setFilterCohort(c.id)}
               style={{ padding: "5px 13px", borderRadius: 20, border: filterCohort === c.id ? "none" : "1px solid var(--border)", background: filterCohort === c.id ? "var(--primary)" : "var(--card)", color: filterCohort === c.id ? "var(--primary-foreground)" : "var(--foreground)", cursor: "pointer", fontSize: 12, fontWeight: filterCohort === c.id ? 600 : 400 }}>
               {c.name}
@@ -876,7 +933,7 @@ const StudentsScreen = (props: ScreenProps) => {
             </thead>
             <tbody>
               {filtered.map(stu => {
-                const coh = COHORTS.find(c => c.id === stu.cohortId);
+                const coh = props.cohorts.find(c => c.id === stu.cohortId);
                 const dup = nameCounts[stu.name] > 1;
                 return (
                   <tr key={stu.id} style={{ background: editingId === stu.id ? "var(--secondary)" : "transparent" }}>
@@ -926,7 +983,7 @@ const StudentsScreen = (props: ScreenProps) => {
               <div>
                 <label style={labelSt}>Cohort</label>
                 <select value={form.cohortId} onChange={e => setForm(f => ({ ...f, cohortId: e.target.value }))} style={{ ...inputSt }}>
-                  {COHORTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {props.cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
@@ -980,7 +1037,7 @@ const SessionsScreen = (props: ScreenProps) => {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 14 }}>
             <div><label style={labelSt}>Cohort</label>
               <select value={form.cohortId} onChange={e => setForm(f => ({ ...f, cohortId: e.target.value }))} style={inputSt}>
-                {COHORTS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {props.cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div><label style={labelSt}>Session #</label><input type="number" value={form.num} onChange={e => setForm(f => ({ ...f, num: e.target.value }))} placeholder="e.g. 14" style={inputSt} /></div>
@@ -1658,8 +1715,8 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
 // REPORTS
 // ============================================================
 
-const ReportsScreen = ({ activeCohort, students, sessions }: ScreenProps) => {
-  const cohort = COHORTS.find(c => c.id === activeCohort);
+const ReportsScreen = ({ activeCohort, cohorts, students, sessions }: ScreenProps) => {
+  const cohort = cohorts.find(c => c.id === activeCohort);
   const completed  = sessions.filter(s => s.status === "published" || s.status === "archived");
   const attPct     = Math.round(ATTENDANCE_TREND.reduce((a, d) => a + d.rate, 0) / (ATTENDANCE_TREND.length || 1));
   const withId  = students.filter(s => s.playerId);
@@ -1817,16 +1874,50 @@ export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState("ses13");
   const [tvMode, setTvMode] = useState(false);
   const [intermission, setIntermission] = useState(false);
+  const [cohorts, setCohorts] = useState<Cohort[]>(COHORTS);
+  const [allStudents, setAllStudents] = useState<Student[]>(STUDENTS);
+  const [allSessions, setAllSessions] = useState<Session[]>(SESSIONS);
+  const [apiStatus, setApiStatus] = useState<"loading" | "ready" | "fallback">("loading");
 
-  const students = useMemo(() => STUDENTS.filter(s => s.cohortId === activeCohort), [activeCohort]);
-  const sessions  = useMemo(() => SESSIONS.filter(s => s.cohortId === activeCohort), [activeCohort]);
-  const selectedSession = SESSIONS.find(s => s.id === selectedSessionId);
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchCoreData()
+      .then(data => {
+        if (cancelled) return;
+
+        const nextCohorts = mapApiCohorts(data.cohorts, data.students, data.sessions);
+        const nextActiveCohort = nextCohorts[0]?.id ?? activeCohort;
+        const nextStudents = mapApiStudents(data.leaderboard, nextActiveCohort);
+        const nextSessions = mapApiSessions(data.sessions);
+
+        setCohorts(nextCohorts);
+        setActiveCohort(nextActiveCohort);
+        setAllStudents(nextStudents);
+        setAllSessions(nextSessions);
+        setSelectedSessionId(nextSessions[0]?.id ?? selectedSessionId);
+        setApiStatus("ready");
+      })
+      .catch(error => {
+        console.warn("Using mock data because the backend API is unavailable.", error);
+        if (!cancelled) setApiStatus("fallback");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const students = useMemo(() => allStudents.filter(s => s.cohortId === activeCohort), [activeCohort, allStudents]);
+  const sessions  = useMemo(() => allSessions.filter(s => s.cohortId === activeCohort), [activeCohort, allSessions]);
+  const selectedSession = allSessions.find(s => s.id === selectedSessionId);
 
   const screenProps: ScreenProps = {
     activeCohort,
     setActiveCohort,
+    cohorts,
     students,
-    allStudents: STUDENTS,
+    allStudents,
     sessions,
     selectedSessionId,
     setSelectedSessionId,
@@ -1851,9 +1942,15 @@ export default function App() {
         setScreen={setScreen}
         activeCohort={activeCohort}
         setActiveCohort={setActiveCohort}
+        cohorts={cohorts}
         onTVMode={() => setTvMode(true)}
       />
       <main style={{ marginLeft: 200, flex: 1, minWidth: 0, padding: "28px 32px 48px", position: "relative", zIndex: 10 }}>
+        {apiStatus === "fallback" && (
+          <div style={{ marginBottom: 14, padding: "10px 14px", border: "1px solid #92400E44", borderRadius: 8, background: "#FEF3C7", color: "#78350F", fontSize: 13 }}>
+            Backend API unavailable. Showing bundled demo data.
+          </div>
+        )}
         {screen === "dashboard"   && <DashboardScreen   {...screenProps} />}
         {screen === "leaderboard" && <LeaderboardScreen {...screenProps} />}
         {screen === "students"    && <StudentsScreen    {...screenProps} />}
