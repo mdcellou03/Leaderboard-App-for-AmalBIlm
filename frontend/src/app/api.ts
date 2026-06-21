@@ -29,13 +29,58 @@ export interface ApiLeaderboardRow {
   rank: number;
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+export interface AuthState {
+  authenticated: boolean;
+}
+
+let csrfToken: string | null = null;
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+    },
+  });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status} ${response.statusText}`);
   }
 
   return response.json() as Promise<T>;
+}
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+
+  const data = await fetchJson<{ csrf_token: string }>("/api/auth/csrf");
+  csrfToken = data.csrf_token;
+  return csrfToken;
+}
+
+async function postJson<T>(url: string, body?: unknown): Promise<T> {
+  const token = await getCsrfToken();
+
+  return fetchJson<T>(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": token,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+export async function fetchAuthState(): Promise<AuthState> {
+  return fetchJson<AuthState>("/api/auth/me");
+}
+
+export async function loginAdmin(password: string): Promise<AuthState> {
+  return postJson<AuthState>("/api/auth/login", { password });
+}
+
+export async function logoutAdmin(): Promise<AuthState> {
+  return postJson<AuthState>("/api/auth/logout");
 }
 
 export async function fetchCoreData() {

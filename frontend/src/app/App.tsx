@@ -5,9 +5,9 @@ import {
   Search, Plus, Edit3, Lock, ArrowLeft,
   RefreshCw, X, AlignLeft, Check, AlertTriangle,
   Clock, Download, FileText, Link2, ExternalLink,
-  ChevronRight, Save, Award, BookOpen,
+  ChevronRight, Save, Award, BookOpen, LogOut,
 } from "lucide-react";
-import { fetchCoreData, type ApiCohort, type ApiLeaderboardRow, type ApiSession, type ApiStudent } from "./api";
+import { fetchAuthState, fetchCoreData, loginAdmin, logoutAdmin, type ApiCohort, type ApiLeaderboardRow, type ApiSession, type ApiStudent } from "./api";
 
 // ============================================================
 // TYPES
@@ -378,13 +378,14 @@ const NAV_GROUPS = [
   { label: "Tools",     items: [{ id: "kahoot"      as AdminScreen, icon: Zap,             label: "Kahoot"     }, { id: "reports" as AdminScreen, icon: BarChart2, label: "Reports"  }] },
 ];
 
-const AdminSidebar = ({ currentScreen, setScreen, activeCohort, setActiveCohort, cohorts, onTVMode }: {
+const AdminSidebar = ({ currentScreen, setScreen, activeCohort, setActiveCohort, cohorts, onTVMode, onLogout }: {
   currentScreen: AdminScreen;
   setScreen: (s: AdminScreen) => void;
   activeCohort: string;
   setActiveCohort: (id: string) => void;
   cohorts: Cohort[];
   onTVMode: () => void;
+  onLogout: () => void;
 }) => {
   const cohort = cohorts.find(c => c.id === activeCohort);
   return (
@@ -444,6 +445,10 @@ const AdminSidebar = ({ currentScreen, setScreen, activeCohort, setActiveCohort,
         <button onClick={onTVMode}
           style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "8px", background: "transparent", border: "1px solid #C8960C44", color: "#C8960C", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
           <Tv size={14} /> TV Display
+        </button>
+        <button onClick={onLogout}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "8px", marginTop: 8, background: "transparent", border: "1px solid #2A4040", color: "#8FB0A0", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          <LogOut size={14} /> Sign Out
         </button>
       </div>
     </div>
@@ -1868,6 +1873,80 @@ const ReportsScreen = ({ activeCohort, cohorts, students, sessions }: ScreenProp
 // APP ROOT
 // ============================================================
 
+const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const result = await loginAdmin(password);
+      if (result.authenticated) {
+        setPassword("");
+        onLogin();
+        return;
+      }
+
+      setError("Incorrect password.");
+    } catch (err) {
+      setError(err instanceof Error && err.message.includes("503")
+        ? "Admin login is not configured. Check ADMIN_PASSWORD_HASH in the backend environment."
+        : "Incorrect password.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--background)", position: "relative", display: "grid", placeItems: "center", padding: 24 }}>
+      <GeoBackground />
+      <form onSubmit={submit} style={{ width: "100%", maxWidth: 410, position: "relative", zIndex: 10, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: 28, boxShadow: "0 24px 80px rgba(15,32,32,0.12)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+          <span style={{ color: "#C8960C", fontSize: 15, fontWeight: 700 }}>◆</span>
+          <span style={{ fontFamily: "Lora, Georgia, serif", color: "var(--foreground)", fontSize: 18, fontWeight: 700 }}>Amal B&apos;Ilm</span>
+        </div>
+        <h1 style={{ fontFamily: "Lora, Georgia, serif", fontSize: 26, margin: "14px 0 4px", color: "var(--foreground)" }}>Staff Login</h1>
+        <p style={{ margin: "0 0 22px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
+          Sign in to manage cohorts, sessions, scores, and the leaderboard display.
+        </p>
+
+        <label style={{ display: "block", fontSize: 11, color: "var(--muted-foreground)", marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          Admin Password
+        </label>
+        <div style={{ position: "relative" }}>
+          <Lock size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted-foreground)" }} />
+          <input
+            type="password"
+            value={password}
+            onChange={event => setPassword(event.target.value)}
+            autoComplete="current-password"
+            autoFocus
+            style={{ width: "100%", padding: "11px 12px 11px 36px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--background)", color: "var(--foreground)", fontSize: 14, boxSizing: "border-box" }}
+          />
+        </div>
+
+        {error && (
+          <div style={{ marginTop: 12, padding: "10px 12px", border: "1px solid #991B1B33", borderRadius: 8, background: "#FEE2E2", color: "#7F1D1D", fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={submitting || !password.trim()}
+          style={{ width: "100%", marginTop: 18, padding: "11px 14px", border: "none", borderRadius: 8, background: submitting || !password.trim() ? "var(--muted)" : "#0F3A32", color: submitting || !password.trim() ? "var(--muted-foreground)" : "#F8EBC7", fontWeight: 700, cursor: submitting || !password.trim() ? "not-allowed" : "pointer" }}
+        >
+          {submitting ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 export default function App() {
   const [screen, setScreen] = useState<AdminScreen>("dashboard");
   const [activeCohort, setActiveCohort] = useState("c1");
@@ -1878,8 +1957,27 @@ export default function App() {
   const [allStudents, setAllStudents] = useState<Student[]>(STUDENTS);
   const [allSessions, setAllSessions] = useState<Session[]>(SESSIONS);
   const [apiStatus, setApiStatus] = useState<"loading" | "ready" | "fallback">("loading");
+  const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
 
   useEffect(() => {
+    let cancelled = false;
+
+    fetchAuthState()
+      .then(result => {
+        if (!cancelled) setAuthStatus(result.authenticated ? "authenticated" : "unauthenticated");
+      })
+      .catch(() => {
+        if (!cancelled) setAuthStatus("unauthenticated");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+
     let cancelled = false;
 
     fetchCoreData()
@@ -1906,7 +2004,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authStatus]);
+
+  const handleLogout = async () => {
+    try {
+      await logoutAdmin();
+    } finally {
+      setTvMode(false);
+      setIntermission(false);
+      setAuthStatus("unauthenticated");
+    }
+  };
 
   const students = useMemo(() => allStudents.filter(s => s.cohortId === activeCohort), [activeCohort, allStudents]);
   const sessions  = useMemo(() => allSessions.filter(s => s.cohortId === activeCohort), [activeCohort, allSessions]);
@@ -1924,6 +2032,18 @@ export default function App() {
     setScreen,
     onTVMode: () => setTvMode(true),
   };
+
+  if (authStatus === "checking") {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "var(--background)", color: "var(--muted-foreground)", fontSize: 13 }}>
+        Checking session...
+      </div>
+    );
+  }
+
+  if (authStatus === "unauthenticated") {
+    return <LoginScreen onLogin={() => setAuthStatus("authenticated")} />;
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex" }}>
@@ -1944,6 +2064,7 @@ export default function App() {
         setActiveCohort={setActiveCohort}
         cohorts={cohorts}
         onTVMode={() => setTvMode(true)}
+        onLogout={handleLogout}
       />
       <main style={{ marginLeft: 200, flex: 1, minWidth: 0, padding: "28px 32px 48px", position: "relative", zIndex: 10 }}>
         {apiStatus === "fallback" && (

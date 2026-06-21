@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from flask import Flask, jsonify, request
+from flask import Flask, current_app, jsonify, request, session
+from flask_wtf.csrf import generate_csrf
+from werkzeug.security import check_password_hash
 
 from backend.extensions import db
+from backend.extensions import limiter
 from backend.models import Cohort, ScoreEntry, Student, WorkshopSession
 from backend.services.scoring import compute_leaderboard
 from backend.services.students import student_code
@@ -14,6 +17,36 @@ def register_api_routes(app: Flask) -> None:
     @app.get("/api/health")
     def api_health():
         return jsonify({"status": "ok"})
+
+    @app.get("/api/auth/csrf")
+    def api_auth_csrf():
+        return jsonify({"csrf_token": generate_csrf()})
+
+    @app.get("/api/auth/me")
+    def api_auth_me():
+        return jsonify({"authenticated": bool(session.get("admin_logged_in"))})
+
+    @app.post("/api/auth/login")
+    @limiter.limit("5 per minute")
+    def api_auth_login():
+        payload = request.get_json(silent=True) or {}
+        password = str(payload.get("password", ""))
+        admin_password_hash = current_app.config.get("ADMIN_PASSWORD_HASH", "")
+
+        if not admin_password_hash:
+            return jsonify({"authenticated": False, "error": "Admin login is not configured."}), 503
+
+        if check_password_hash(admin_password_hash, password):
+            session.clear()
+            session["admin_logged_in"] = True
+            return jsonify({"authenticated": True})
+
+        return jsonify({"authenticated": False, "error": "Incorrect password."}), 401
+
+    @app.post("/api/auth/logout")
+    def api_auth_logout():
+        session.pop("admin_logged_in", None)
+        return jsonify({"authenticated": False})
 
     @app.get("/api/cohorts")
     def api_cohorts():
