@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from backend.models import ScoreEntry, Student, WorkshopSession
-from backend.services.students import student_code
+from ..models import ScoreEntry, Student, WorkshopSession
+from .students import student_code
 
 
 def compute_base_points(entry: ScoreEntry, workshop_session: WorkshopSession) -> int:

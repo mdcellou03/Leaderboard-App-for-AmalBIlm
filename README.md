@@ -1,186 +1,170 @@
-# AmalBIlm Leaderboard App
+# Amal B'Ilm Leaderboard App
 
-This app supports the AmalBIlm workshop program by tracking students, cohorts, workshop sessions, scoring, and leaderboard results.
+Full-stack workshop leaderboard for Amal B'Ilm. The product is built for staff
+to manage cohorts, students, sessions, scoring, Kahoot-assisted engagement, and
+TV-friendly leaderboard displays during youth workshop programming.
 
-Current backend features:
+## Product Shape
 
-- Add students
-- Add cohorts such as `Spring 2026`
-- Create workshop sessions and assign them to cohorts
-- Record objective scoring per student per session
-- Compute points using the app's scoring rules
-- Display a cohort-filterable leaderboard
-- Expose JSON API endpoints for the upcoming React frontend
-
-## Project Structure
+The app has two source projects:
 
 ```text
-backend/              Flask backend, API, database models, migrations, and legacy Jinja pages
-backend/routes/       URL handlers for auth, admin pages, public pages, and API endpoints
-backend/services/     Business logic such as scoring and student ID generation
-backend/templates/    Legacy Flask/Jinja HTML pages kept while React is introduced
-backend/static/       Legacy CSS/assets for the Jinja pages
-backend/migrations/   Alembic database migrations
-instance/             Local runtime data, including the SQLite database
+backend/                 Flask API, database models, migrations, auth, services
+backend/leaderboard/     Importable Flask application package
+backend/migrations/      Alembic migration history
+frontend/                React/Vite staff dashboard and TV display UI
+frontend/src/app/        React screens, app state, and API client helpers
+frontend/src/styles/     Frontend theme and global styles
+Docs/                    Local planning notes and meeting artifacts
 ```
 
-The next major step is adding a `frontend/` React app that consumes the backend API.
+The repository root is the workspace. Backend commands run from `backend/`.
+Frontend commands run from `frontend/`.
 
-## Frontend Setup
+## Current Capabilities
 
-The React frontend lives in `frontend/`.
+- Staff login protects the React admin workspace.
+- Backend auth uses Flask sessions, CSRF tokens, `SECRET_KEY`, and either
+  `ADMIN_PASSWORD_HASH` for production or `ADMIN_PASSWORD` for local development.
+- Backend exposes API endpoints for auth, cohorts, students, sessions, and
+  leaderboard reads.
+- React frontend includes dashboard, leaderboard, students, sessions, scoring,
+  Kahoot workflow, reports, and TV display screens.
+- Local data uses SQLite by default. Production should use PostgreSQL through
+  `DATABASE_URL`.
 
-Install frontend dependencies:
+## Local Backend Setup
 
-```bash
-cd frontend
-npm install
-```
+Copy `.env.example` to `.env` in the repository root.
 
-Run the React development server:
-
-```bash
-npm run dev
-```
-
-During development, Vite proxies `/api` requests to the Flask backend at `http://127.0.0.1:5000`.
-
-Build the production frontend:
-
-```bash
-npm run build
-```
-
-## Backend Setup
-
-1. Create and activate a virtual environment.
-
-2. Install backend dependencies:
-
-```bash
-python -m pip install -r backend/requirements.txt
-```
-
-3. Copy `.env.example` to `.env`, then fill in:
+For local development, use the simpler password option:
 
 ```env
-SECRET_KEY=
-ADMIN_PASSWORD_HASH=
+SECRET_KEY=replace-with-a-generated-secret
+ADMIN_PASSWORD=your-local-password
 DATABASE_URL=
 STUDENT_CODE_PREFIX=STU
 ```
 
 Generate a `SECRET_KEY`:
 
-```bash
+```powershell
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Generate an admin password hash:
+Production should not use `ADMIN_PASSWORD`. Generate and set
+`ADMIN_PASSWORD_HASH` instead:
 
-```bash
-python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('yourpassword', method='pbkdf2:sha256'))"
+```powershell
+python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('your-password', method='pbkdf2:sha256'))"
 ```
 
-4. Create or update the database schema:
+Preferred backend workflow with `uv`:
 
-```bash
-flask --app backend.app db upgrade
+```powershell
+cd backend
+uv sync
+uv run flask --app leaderboard.app db upgrade
+uv run flask --app leaderboard.app run
 ```
 
-5. Run the backend:
+Fallback backend workflow with `venv` and `pip`:
 
-```bash
-flask --app backend.app run
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r backend/requirements.txt
+cd backend
+flask --app leaderboard.app db upgrade
+flask --app leaderboard.app run
 ```
 
-The local database file lives at `instance/leaderboard.db` and is created by the migration command.
-
-## Database
-
-Local development uses SQLite by default.
-
-Production should use a managed PostgreSQL database by setting `DATABASE_URL`:
-
-```env
-DATABASE_URL=postgresql://user:password@host:5432/database
-```
-
-Schema changes are tracked with Flask-Migrate/Alembic:
-
-```bash
-flask --app backend.app db migrate -m "Describe the schema change"
-flask --app backend.app db upgrade
-```
-
-## API Endpoints
-
-Initial read endpoints for the React frontend:
+The backend runs at:
 
 ```text
-GET /api/health
-GET /api/cohorts
-GET /api/students
-GET /api/sessions
-GET /api/leaderboard
-GET /api/leaderboard?cohort_id=1
+http://127.0.0.1:5000
 ```
+
+## Local Frontend Setup
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend usually runs at:
+
+```text
+http://localhost:5173
+```
+
+During development, Vite proxies `/api` requests to
+`http://127.0.0.1:5000`.
+
+Build the frontend:
+
+```powershell
+npm run build
+```
+
+## API Surface
+
+Current API endpoints:
+
+```text
+GET  /api/health
+GET  /api/auth/csrf
+GET  /api/auth/me
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/cohorts
+GET  /api/students
+GET  /api/sessions
+GET  /api/leaderboard
+GET  /api/leaderboard?cohort_id=1
+```
+
+Upcoming API work should add authenticated write endpoints for students,
+sessions, scoring, and Kahoot workflow state.
+
+## Kahoot Direction
+
+The intended session workflow is not bulk quiz upload. Presenters may send a few
+short engagement questions during the workshop, launch Kahoot from the session
+workspace, and retrieve results after the activity.
+
+The app should be designed around a Kahoot adapter:
+
+- Preferred path: official/commercial Kahoot access creates/updates the quiz,
+  returns a launch URL, and provides result retrieval.
+- Fallback path: the app prepares questions/results for manual import/export if
+  the official API does not support the desired automation.
+
+Do not couple core scoring to an unofficial browser automation approach. The
+leaderboard should remain usable even if Kahoot integration is unavailable.
+
+## Next Build Priorities
+
+1. Add cohort ownership to students so filtering is database-accurate.
+2. Add authenticated CRUD APIs for students and connect the Students screen.
+3. Add authenticated CRUD APIs for sessions and connect the Sessions screen.
+4. Add scoring persistence, review, and publish workflow.
+5. Define the Kahoot adapter contract and implement the best available provider.
+6. Add deployment configuration, production database setup, and tests.
 
 ## Tech Stack
 
 | Area | Tool |
 |---|---|
-| Backend language | Python 3 |
-| Backend framework | Flask |
-| Database ORM | Flask-SQLAlchemy |
+| Backend | Flask |
+| ORM | Flask-SQLAlchemy |
 | Migrations | Flask-Migrate / Alembic |
 | Local database | SQLite |
 | Production database target | PostgreSQL |
-| Frontend today | Legacy Flask/Jinja templates |
-| Frontend target | React consuming Flask JSON APIs |
-| Production server | gunicorn |
-
-## Objective Scoring Rules
-
-Each student starts with 10 points for each category when marked present.
-
-### 1. Punctuality
-
-- On time with a 5-minute buffer: no penalty
-- Late by more than 5 minutes: -5
-
-### 2. Participation
-
-- Asked meaningful questions: +1
-- Distracted others: -1
-- Made a connection across ideas: +1
-- Challenged an assumption constructively: +1
-- Tried something new or took a learning risk: +1
-- Answered a question: +1
-
-### 3. Teamwork
-
-- Contributed to team dynamic: +1
-- Made sure all team members were included: +1
-- Allocated tasks to members: +1
-- Demonstrated leadership and/or followed the lead well: +1
-- Helped a peer unprompted: +1
-
-### 4. Adab
-
-- Includes others, spreads salaam, reaches out if someone is alone: +1
-- Treats classmates, instructors, and volunteers with respect: +1
-- Uses phone/electronics when not required: -1
-- Interrupts, speaks over others, or uses disrespectful communication: -1
-
-### 5. Deliverables
-
-- Completed the activity: +1
-- Expanded beyond workshop content: +1
-
-## Author
-
-Amna Adnan
+| Frontend | React / Vite |
+| Styling | Project CSS theme and component styles |
+| Production server target | gunicorn or platform-managed Python runtime |
 
 ## License
 

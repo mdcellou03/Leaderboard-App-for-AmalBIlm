@@ -76,11 +76,15 @@ export async function fetchAuthState(): Promise<AuthState> {
 }
 
 export async function loginAdmin(password: string): Promise<AuthState> {
-  return postJson<AuthState>("/api/auth/login", { password });
+  const result = await postJson<AuthState>("/api/auth/login", { password });
+  csrfToken = null;
+  return result;
 }
 
 export async function logoutAdmin(): Promise<AuthState> {
-  return postJson<AuthState>("/api/auth/logout");
+  const result = await postJson<AuthState>("/api/auth/logout");
+  csrfToken = null;
+  return result;
 }
 
 export async function fetchCoreData() {

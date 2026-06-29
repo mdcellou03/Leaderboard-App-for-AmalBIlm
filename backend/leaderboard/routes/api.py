@@ -6,11 +6,11 @@ from flask import Flask, current_app, jsonify, request, session
 from flask_wtf.csrf import generate_csrf
 from werkzeug.security import check_password_hash
 
-from backend.extensions import db
-from backend.extensions import limiter
-from backend.models import Cohort, ScoreEntry, Student, WorkshopSession
-from backend.services.scoring import compute_leaderboard
-from backend.services.students import student_code
+from ..extensions import db
+from ..extensions import limiter
+from ..models import Cohort, ScoreEntry, Student, WorkshopSession
+from ..services.scoring import compute_leaderboard
+from ..services.students import student_code
 
 
 def register_api_routes(app: Flask) -> None:
