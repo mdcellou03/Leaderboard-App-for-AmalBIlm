@@ -4,9 +4,9 @@ from typing import Optional
 
 from flask import Flask, redirect, render_template, request, url_for
 
-from ..extensions import db
-from ..models import Cohort
-from ..services.scoring import compute_leaderboard
+from extensions import db
+from models import Cohort
+from services.scoring import compute_leaderboard
 
 
 def register_public_routes(app: Flask) -> None:

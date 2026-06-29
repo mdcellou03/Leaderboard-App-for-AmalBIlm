@@ -10,7 +10,9 @@ The app has two source projects:
 
 ```text
 backend/                 Flask API, database models, migrations, auth, services
-backend/leaderboard/     Importable Flask application package
+backend/app.py           Flask application entry point
+backend/routes/          Backend route modules
+backend/services/        Backend business logic helpers
 backend/migrations/      Alembic migration history
 frontend/                React/Vite staff dashboard and TV display UI
 frontend/src/app/        React screens, app state, and API client helpers
@@ -64,8 +66,8 @@ Preferred backend workflow with `uv`:
 ```powershell
 cd backend
 uv sync
-uv run flask --app leaderboard.app db upgrade
-uv run flask --app leaderboard.app run
+uv run flask --app app db upgrade
+uv run flask --app app run
 ```
 
 Fallback backend workflow with `venv` and `pip`:
@@ -75,8 +77,8 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend/requirements.txt
 cd backend
-flask --app leaderboard.app db upgrade
-flask --app leaderboard.app run
+flask --app app db upgrade
+flask --app app run
 ```
 
 The backend runs at:

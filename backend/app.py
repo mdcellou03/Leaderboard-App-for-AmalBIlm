@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
-from .config import database_uri
-from .extensions import csrf, db, limiter, migrate
-from .services.students import student_code
+from config import database_uri
+from extensions import csrf, db, limiter, migrate
+from services.students import student_code
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-BACKEND_ROOT = PACKAGE_DIR.parent
+BACKEND_ROOT = PACKAGE_DIR
 REPO_ROOT = BACKEND_ROOT.parent
 
 load_dotenv(REPO_ROOT / ".env")
@@ -66,11 +66,11 @@ def create_app() -> Flask:
     migrate.init_app(app, db, directory=str(BACKEND_ROOT / "migrations"))
     app.jinja_env.globals["student_code"] = student_code
 
-    from .models import Cohort, ScoreEntry, Student, WorkshopSession
-    from .routes.admin import register_admin_routes
-    from .routes.api import register_api_routes
-    from .routes.auth import register_auth_routes
-    from .routes.public import register_public_routes
+    from models import Cohort, ScoreEntry, Student, WorkshopSession
+    from routes.admin import register_admin_routes
+    from routes.api import register_api_routes
+    from routes.auth import register_auth_routes
+    from routes.public import register_public_routes
 
     register_auth_routes(app)
     register_api_routes(app)

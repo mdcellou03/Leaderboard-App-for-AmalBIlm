@@ -2,8 +2,8 @@
 
 Flask API and database layer for the Amal B'Ilm leaderboard app.
 
-Run backend commands from this `backend/` directory. The imports are structured
-so this folder is the backend application root.
+Run backend commands from this `backend/` directory. This folder is the backend
+application root.
 
 ## Preferred Setup With uv
 
@@ -16,13 +16,13 @@ uv sync
 Run database migrations:
 
 ```powershell
-uv run flask --app leaderboard.app db upgrade
+uv run flask --app app db upgrade
 ```
 
 Start the backend:
 
 ```powershell
-uv run flask --app leaderboard.app run
+uv run flask --app app run
 ```
 
 The API will be available at:
@@ -40,8 +40,8 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend/requirements.txt
 cd backend
-flask --app leaderboard.app db upgrade
-flask --app leaderboard.app run
+flask --app app db upgrade
+flask --app app run
 ```
 
 ## Environment
