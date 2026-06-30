@@ -32,9 +32,35 @@ class WorkshopSession(db.Model):
     start_time = db.Column(db.Time, nullable=False)
 
     scores = db.relationship("ScoreEntry", backref="workshop_session", cascade="all, delete-orphan")
+    questions = db.relationship(
+        "SessionQuestion",
+        backref="workshop_session",
+        cascade="all, delete-orphan",
+        order_by="SessionQuestion.position",
+    )
 
     def __repr__(self) -> str:
         return f"<WorkshopSession {self.session_date.isoformat()} {self.start_time}>"
+
+
+class SessionQuestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    workshop_session_id = db.Column(db.Integer, db.ForeignKey("workshop_session.id"), nullable=False)
+
+    position = db.Column(db.Integer, nullable=False, default=1)
+    prompt = db.Column(db.Text, nullable=False)
+    option_a = db.Column(db.String(255), nullable=False)
+    option_b = db.Column(db.String(255), nullable=False)
+    option_c = db.Column(db.String(255), nullable=True)
+    option_d = db.Column(db.String(255), nullable=True)
+    correct_option = db.Column(db.String(1), nullable=False)
+    time_limit_seconds = db.Column(db.Integer, nullable=False, default=20)
+    points = db.Column(db.Integer, nullable=False, default=1000)
+    kahoot_question_id = db.Column(db.String(120), nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("workshop_session_id", "position", name="uniq_session_question_position"),
+    )
 
 
 class ScoreEntry(db.Model):

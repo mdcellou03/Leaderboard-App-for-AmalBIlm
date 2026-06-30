@@ -8,7 +8,7 @@ from werkzeug.security import check_password_hash
 
 from extensions import db
 from extensions import limiter
-from models import Cohort, ScoreEntry, Student, WorkshopSession
+from models import Cohort, ScoreEntry, SessionQuestion, Student, WorkshopSession
 from services.scoring import compute_leaderboard
 from services.students import student_code
 
@@ -71,6 +71,57 @@ def register_api_routes(app: Flask) -> None:
         ).all()
         return jsonify({"sessions": [_session_payload(session) for session in sessions]})
 
+    @app.get("/api/sessions/<int:session_id>/questions")
+    def api_session_questions(session_id: int):
+        workshop_session = db.session.get(WorkshopSession, session_id)
+        if not workshop_session:
+            return jsonify({"error": "Session not found."}), 404
+
+        questions = SessionQuestion.query.filter_by(workshop_session_id=session_id).order_by(
+            SessionQuestion.position.asc(),
+            SessionQuestion.id.asc(),
+        ).all()
+        return jsonify({"questions": [_question_payload(question) for question in questions]})
+
+    @app.post("/api/sessions/<int:session_id>/questions")
+    def api_create_session_question(session_id: int):
+        if not session.get("admin_logged_in"):
+            return jsonify({"error": "Admin login required."}), 401
+
+        workshop_session = db.session.get(WorkshopSession, session_id)
+        if not workshop_session:
+            return jsonify({"error": "Session not found."}), 404
+
+        payload = request.get_json(silent=True) or {}
+        prompt = str(payload.get("prompt", "")).strip()
+        options = [str(option).strip() for option in payload.get("options", []) if str(option).strip()]
+        correct_option = str(payload.get("correct_option", "")).strip().upper()
+
+        if not prompt:
+            return jsonify({"error": "Question prompt is required."}), 400
+        if len(options) < 2 or len(options) > 4:
+            return jsonify({"error": "Provide between 2 and 4 answer options."}), 400
+        if correct_option not in ["A", "B", "C", "D"][: len(options)]:
+            return jsonify({"error": "Correct option must match one of the provided options."}), 400
+
+        position = (db.session.query(db.func.max(SessionQuestion.position)).filter_by(workshop_session_id=session_id).scalar() or 0) + 1
+        question = SessionQuestion(
+            workshop_session_id=workshop_session.id,
+            position=position,
+            prompt=prompt,
+            option_a=options[0],
+            option_b=options[1],
+            option_c=options[2] if len(options) > 2 else None,
+            option_d=options[3] if len(options) > 3 else None,
+            correct_option=correct_option,
+            time_limit_seconds=_safe_int(payload.get("time_limit_seconds"), default=20, minimum=5, maximum=240),
+            points=_safe_int(payload.get("points"), default=1000, minimum=0, maximum=2000),
+        )
+        db.session.add(question)
+        db.session.commit()
+
+        return jsonify({"question": _question_payload(question)}), 201
+
     @app.get("/api/leaderboard")
     def api_leaderboard():
         cohort_id = _optional_int_query("cohort_id")
@@ -101,6 +152,7 @@ def _student_payload(student: Student) -> dict:
 def _session_payload(session: WorkshopSession) -> dict:
     entries = ScoreEntry.query.filter_by(workshop_session_id=session.id).all()
     scored_count = sum(1 for entry in entries if entry.base_points)
+    question_count = SessionQuestion.query.filter_by(workshop_session_id=session.id).count()
 
     return {
         "id": session.id,
@@ -110,6 +162,27 @@ def _session_payload(session: WorkshopSession) -> dict:
         "start_time": session.start_time.strftime("%H:%M"),
         "score_entries": len(entries),
         "scored_entries": scored_count,
+        "question_count": question_count,
+    }
+
+
+def _question_payload(question: SessionQuestion) -> dict:
+    options = [question.option_a, question.option_b]
+    if question.option_c:
+        options.append(question.option_c)
+    if question.option_d:
+        options.append(question.option_d)
+
+    return {
+        "id": question.id,
+        "session_id": question.workshop_session_id,
+        "position": question.position,
+        "prompt": question.prompt,
+        "options": options,
+        "correct_option": question.correct_option,
+        "time_limit_seconds": question.time_limit_seconds,
+        "points": question.points,
+        "kahoot_question_id": question.kahoot_question_id,
     }
 
 
@@ -122,3 +195,12 @@ def _optional_int_query(name: str) -> Optional[int]:
         return int(raw)
     except ValueError:
         return None
+
+
+def _safe_int(value, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+
+    return max(minimum, min(maximum, parsed))

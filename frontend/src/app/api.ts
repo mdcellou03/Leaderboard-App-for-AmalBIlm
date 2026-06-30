@@ -19,6 +19,7 @@ export interface ApiSession {
   start_time: string;
   score_entries: number;
   scored_entries: number;
+  question_count: number;
 }
 
 export interface ApiLeaderboardRow {
