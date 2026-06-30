@@ -7,6 +7,8 @@ application root.
 
 ## Preferred Setup With uv
 
+If `uv` is installed globally, run:
+
 Install dependencies:
 
 ```powershell
@@ -23,6 +25,15 @@ Start the backend:
 
 ```powershell
 uv run flask --app app run
+```
+
+If PowerShell says `uv` is not recognized, use the repository-local uv
+executable from this `backend/` folder:
+
+```powershell
+..\.venv\Scripts\uv.exe sync
+..\.venv\Scripts\uv.exe run flask --app app db upgrade
+..\.venv\Scripts\uv.exe run flask --app app run
 ```
 
 The API will be available at:

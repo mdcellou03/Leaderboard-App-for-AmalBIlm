@@ -70,6 +70,16 @@ uv run flask --app app db upgrade
 uv run flask --app app run
 ```
 
+If PowerShell says `uv` is not recognized, uv is not installed globally or is
+not on PATH. From this repository, you can use the local executable instead:
+
+```powershell
+cd backend
+..\.venv\Scripts\uv.exe sync
+..\.venv\Scripts\uv.exe run flask --app app db upgrade
+..\.venv\Scripts\uv.exe run flask --app app run
+```
+
 Fallback backend workflow with `venv` and `pip`:
 
 ```powershell
