@@ -378,7 +378,7 @@ const NUM_INPUT: React.CSSProperties = { width: 52, padding: "4px 6px", fontSize
 const NAV_GROUPS = [
   { label: "Overview",  items: [{ id: "dashboard"   as AdminScreen, icon: LayoutDashboard, label: "Dashboard"  }] },
   { label: "Program",   items: [{ id: "leaderboard" as AdminScreen, icon: Trophy,          label: "Leaderboard"}] },
-  { label: "Manage",    items: [{ id: "students"    as AdminScreen, icon: Users,           label: "Students"   }, { id: "sessions" as AdminScreen, icon: Calendar, label: "Sessions" }, { id: "scoring" as AdminScreen, icon: ClipboardList, label: "Scoring" }] },
+  { label: "Manage",    items: [{ id: "students"    as AdminScreen, icon: Users,           label: "Students"   }, { id: "sessions" as AdminScreen, icon: Calendar, label: "Sessions" }, { id: "scoring" as AdminScreen, icon: ClipboardList, label: "Session" }] },
   { label: "Tools",     items: [{ id: "kahoot"      as AdminScreen, icon: Zap,             label: "Kahoot"     }, { id: "reports" as AdminScreen, icon: BarChart2, label: "Reports"  }] },
 ];
 
@@ -675,6 +675,12 @@ const DashboardScreen = ({ activeCohort, cohorts, students, sessions, setScreen,
                 </div>
                 <div style={{ display: "flex", gap: 6 }}><SessionStatusBadge status={upcoming.status} /></div>
                 {upcoming.notes && <p style={{ color: "#4A6A5A", fontSize: 11, marginTop: 8, fontStyle: "italic" }}>{upcoming.notes}</p>}
+                <button
+                  onClick={() => { setSelectedSessionId(upcoming.id); setScreen("scoring"); }}
+                  style={{ width: "100%", marginTop: 12, padding: 8, borderRadius: 7, border: "1px solid rgba(248,235,199,0.18)", background: "rgba(248,235,199,0.08)", color: "#F8EBC7", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                >
+                  Open Session Workspace <ChevronRight size={13} />
+                </button>
               </div>
             </div>
           )}
@@ -1090,7 +1096,7 @@ const SessionsScreen = (props: ScreenProps) => {
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => { props.setSelectedSessionId(ses.id); props.setScreen("scoring"); }}
                         style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-                        <ClipboardList size={11} /> Score
+                        <ClipboardList size={11} /> Open Workspace
                       </button>
                       {ses.notes && (
                         <button onClick={() => setViewNotes(viewNotes === ses.id ? null : ses.id)}
@@ -1292,7 +1298,156 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
   );
 };
 
-const SessionWorkspaceScreen = (props: ScreenProps) => <ScoringScreen {...props} />;
+const SessionWorkspaceScreen = (props: ScreenProps) => {
+  const { activeCohort, cohorts, students, sessions, selectedSessionId, setSelectedSessionId, setScreen, onTVMode } = props;
+  const [tab, setTab] = useState<SessionWorkspaceTab>("overview");
+
+  const cohort = cohorts.find(c => c.id === activeCohort);
+  const cohortSessions = [...sessions].sort((a, b) => a.num - b.num);
+  const selectedSession = sessions.find(s => s.id === selectedSessionId) ?? sessions[0];
+  const sessionLabel = selectedSession ? `Session ${selectedSession.num} — ${selectedSession.title}` : "No session selected";
+  const pendingReview = selectedSession?.status === "review" || selectedSession?.kahootStatus === "results-imported";
+
+  const tabButton = (id: SessionWorkspaceTab, label: string): React.CSSProperties => ({
+    padding: "8px 14px",
+    border: "1px solid var(--border)",
+    borderRadius: 999,
+    background: tab === id ? "var(--primary)" : "var(--card)",
+    color: tab === id ? "var(--primary-foreground)" : "var(--foreground)",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+  });
+
+  const actionCard = (
+    title: string,
+    description: string,
+    icon: React.ReactNode,
+    action: React.ReactNode,
+    accent = "#C8960C",
+  ) => (
+    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderLeft: `3px solid ${accent}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 8, background: `${accent}1F`, color: accent, display: "grid", placeItems: "center", flexShrink: 0 }}>
+          {icon}
+        </div>
+        <div>
+          <h3 style={{ margin: "0 0 4px", fontFamily: "Lora, serif", fontSize: 15, color: "var(--foreground)" }}>{title}</h3>
+          <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "var(--muted-foreground)" }}>{description}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  );
+
+  if (!selectedSession) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <PageHeader title="Session Workspace" description={`${cohort?.name ?? "Selected cohort"} has no sessions yet.`} />
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
+          <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 13 }}>Create a session first. Once it exists, this workspace becomes the presenter control room for questions, live Kahoot, scoring, results, and TV display.</p>
+          <button onClick={() => setScreen("sessions")} style={{ marginTop: 14, padding: "8px 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer" }}>
+            Go to Sessions
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <PageHeader
+        title="Session Workspace"
+        description={`${cohort?.name ?? "Selected cohort"} · live presenter controls for ${sessionLabel}`}
+        action={<button onClick={onTVMode} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}><Tv size={14} /> TV Display</button>}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto", gap: 12, alignItems: "center", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <select value={selectedSessionId} onChange={e => setSelectedSessionId(e.target.value)}
+            style={{ minWidth: 280, background: "var(--background)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 12px", fontSize: 13 }}>
+            {cohortSessions.map(s => <option key={s.id} value={s.id}>Session {s.num} — {s.title}</option>)}
+          </select>
+          <SessionStatusBadge status={selectedSession.status} />
+          <KahootStatusBadge status={selectedSession.kahootStatus} />
+        </div>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <button style={tabButton("overview", "Overview")} onClick={() => setTab("overview")}>Overview</button>
+          <button style={tabButton("questions", "Questions")} onClick={() => setTab("questions")}>Questions</button>
+          <button style={tabButton("score", "Score")} onClick={() => setTab("score")}>Score</button>
+          <button style={tabButton("results", "Results")} onClick={() => setTab("results")}>Results</button>
+        </div>
+      </div>
+
+      {tab === "overview" && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+            <StatCard label="Students" value={students.length} sub="in selected cohort" accent="#C8960C" />
+            <StatCard label="Session Date" value={fmtDate(selectedSession.date)} sub={selectedSession.presenter} accent="#2A7A5A" />
+            <StatCard label="Quiz State" value={KAHOOT_STATUS_CFG[selectedSession.kahootStatus].label} sub="Kahoot workflow" accent="#6366f1" />
+            <StatCard label="Review" value={pendingReview ? "Needed" : "Clear"} sub="before publishing scores" accent={pendingReview ? "#F59E0B" : "#10B981"} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
+            {actionCard(
+              "Prepare or send engagement questions",
+              "Use this while the presenter is moving through the lesson. Questions stay tied to this session and can later be pushed to Kahoot through the API adapter.",
+              <Zap size={17} />,
+              <button onClick={() => setTab("questions")} style={{ padding: "8px 12px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer" }}>Open Questions</button>,
+              "#C8960C",
+            )}
+            {actionCard(
+              "Run the live quiz",
+              "Launch Kahoot from the selected session, show the join link or PIN, then return here when the quiz is complete.",
+              <ExternalLink size={17} />,
+              <button onClick={() => setScreen("kahoot")} style={{ padding: "8px 12px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer" }}>Open Kahoot Tools</button>,
+              "#6366f1",
+            )}
+            {actionCard(
+              "Score attendance and conduct",
+              "Record attendance, punctuality, deliverables, participation, teamwork, conduct, and penalties without leaving the session context.",
+              <ClipboardList size={17} />,
+              <button onClick={() => setTab("score")} style={{ padding: "8px 12px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer" }}>Open Score Sheet</button>,
+              "#2A7A5A",
+            )}
+            {actionCard(
+              "Sync and review results",
+              "After Kahoot ends, pull results into this session, match them to student IDs, review exceptions, then apply the quiz points.",
+              <RefreshCw size={17} />,
+              <button onClick={() => setTab("results")} style={{ padding: "8px 12px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer" }}>Review Results</button>,
+              "#10B981",
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === "questions" && (
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
+          <h3 style={{ margin: "0 0 6px", fontFamily: "Lora, serif", color: "var(--foreground)" }}>Session Questions</h3>
+          <p style={{ margin: "0 0 16px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
+            This is where the real build should store short engagement questions as the presenter goes. The current Kahoot page already models question drafting, API sync, live launch, and results review; the backend next needs session-question tables and a Kahoot adapter service.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={() => setScreen("kahoot")} style={{ padding: "9px 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}><Zap size={14} /> Manage Kahoot Questions</button>
+            <button style={{ padding: "9px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "transparent", color: "var(--foreground)", fontWeight: 700, cursor: "not-allowed", opacity: 0.65 }}><Plus size={14} /> Add Question API coming next</button>
+          </div>
+        </div>
+      )}
+
+      {tab === "score" && <ScoringScreen {...props} />}
+
+      {tab === "results" && (
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
+          <h3 style={{ margin: "0 0 6px", fontFamily: "Lora, serif", color: "var(--foreground)" }}>Results Review</h3>
+          <p style={{ margin: "0 0 16px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
+            The intended production flow is API-first: fetch Kahoot report data for this session, match rows by student code, flag unmatched names, and only then apply scores to the leaderboard.
+          </p>
+          <button onClick={() => setScreen("kahoot")} style={{ padding: "9px 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}><RefreshCw size={14} /> Open Kahoot Results</button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ============================================================
 // KAHOOT
