@@ -55,7 +55,12 @@ def register_api_routes(app: Flask) -> None:
 
     @app.get("/api/students")
     def api_students():
-        students = Student.query.order_by(Student.name.asc()).all()
+        cohort_id = _optional_int_query("cohort_id")
+        students_query = Student.query
+        if cohort_id is not None:
+            students_query = students_query.filter_by(cohort_id=cohort_id)
+
+        students = students_query.order_by(Student.name.asc()).all()
         return jsonify({"students": [_student_payload(student) for student in students]})
 
     @app.get("/api/sessions")
@@ -86,6 +91,8 @@ def _cohort_payload(cohort: Cohort) -> dict:
 def _student_payload(student: Student) -> dict:
     return {
         "id": student.id,
+        "cohort_id": student.cohort_id,
+        "cohort_name": student.cohort.name if student.cohort else None,
         "code": student_code(student.id),
         "name": student.name,
     }

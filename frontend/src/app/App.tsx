@@ -14,6 +14,7 @@ import { fetchAuthState, fetchCoreData, loginAdmin, logoutAdmin, type ApiCohort,
 // ============================================================
 
 type AdminScreen = "dashboard" | "leaderboard" | "students" | "sessions" | "scoring" | "kahoot" | "reports";
+type SessionWorkspaceTab = "overview" | "questions" | "score" | "results";
 type SessionStatus = "draft" | "ready" | "live" | "review" | "published" | "archived";
 type KahootStatus = "questions-ready" | "exported" | "hosted" | "results-imported" | "reviewed";
 type GradeStatus = "draft" | "reviewed" | "published";
@@ -159,6 +160,7 @@ const mapApiCohorts = (cohorts: ApiCohort[], students: ApiStudent[], sessions: A
   return cohorts.map(cohort => {
     const id = String(cohort.id);
     const sessionCount = sessions.filter(session => session.cohort_id === cohort.id).length;
+    const studentCount = students.filter(student => student.cohort_id === cohort.id).length;
 
     return {
       id,
@@ -166,19 +168,21 @@ const mapApiCohorts = (cohorts: ApiCohort[], students: ApiStudent[], sessions: A
       term: `${cohort.name} Cohort`,
       status: "active",
       sessionCount,
-      studentCount: students.length,
+      studentCount,
     };
   });
 };
 
-const mapApiStudents = (leaderboard: ApiLeaderboardRow[], activeCohort: string): Student[] => {
+const mapApiStudents = (leaderboard: ApiLeaderboardRow[], students: ApiStudent[], activeCohort: string): Student[] => {
   if (!leaderboard.length) return STUDENTS;
+
+  const studentsById = new Map(students.map(student => [student.id, student]));
 
   return leaderboard.map((row, index) => ({
     id: String(row.id),
     code: row.code,
     name: row.name,
-    cohortId: activeCohort,
+    cohortId: String(studentsById.get(row.id)?.cohort_id ?? activeCohort),
     playerId: row.code,
     attendance: row.attended_sessions,
     totalSessions: Math.max(row.attended_sessions, row.current_streak),
@@ -1288,6 +1292,8 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
   );
 };
 
+const SessionWorkspaceScreen = (props: ScreenProps) => <ScoringScreen {...props} />;
+
 // ============================================================
 // KAHOOT
 // ============================================================
@@ -1986,7 +1992,7 @@ export default function App() {
 
         const nextCohorts = mapApiCohorts(data.cohorts, data.students, data.sessions);
         const nextActiveCohort = nextCohorts[0]?.id ?? activeCohort;
-        const nextStudents = mapApiStudents(data.leaderboard, nextActiveCohort);
+        const nextStudents = mapApiStudents(data.leaderboard, data.students, nextActiveCohort);
         const nextSessions = mapApiSessions(data.sessions);
 
         setCohorts(nextCohorts);
@@ -2076,7 +2082,7 @@ export default function App() {
         {screen === "leaderboard" && <LeaderboardScreen {...screenProps} />}
         {screen === "students"    && <StudentsScreen    {...screenProps} />}
         {screen === "sessions"    && <SessionsScreen    {...screenProps} />}
-        {screen === "scoring"     && <ScoringScreen     {...screenProps} />}
+        {screen === "scoring"     && <SessionWorkspaceScreen {...screenProps} />}
         {screen === "kahoot"      && <KahootScreen     {...screenProps} />}
         {screen === "reports"     && <ReportsScreen     {...screenProps} />}
       </main>

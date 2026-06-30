@@ -18,10 +18,22 @@
     <div class="card mb-3">
       <div class="card-header fw-semibold">Add Student</div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('add_student') }}" class="d-flex gap-2">
+        <form method="post" action="{{ url_for('add_student') }}" class="row g-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input class="form-control" name="name" placeholder="Student name (e.g. Maryam)" required />
-          <button class="btn btn-primary" type="submit">Add</button>
+          <div class="col-12">
+            <input class="form-control" name="name" placeholder="Student name (e.g. Maryam)" required />
+          </div>
+          <div class="col-12">
+            <select class="form-select" name="cohort_id">
+              <option value="">Unassigned</option>
+              {% for cohort in cohorts %}
+                <option value="{{ cohort.id }}">{{ cohort.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary" type="submit">Add</button>
+          </div>
         </form>
       </div>
     </div>
@@ -95,7 +107,10 @@
       <div class="card-body">
         <div class="d-flex flex-wrap gap-2">
           {% for st in students %}
-            <span class="badge text-bg-light border">{{ st.name }} &middot; {{ student_code(st.id) }}</span>
+            <span class="badge text-bg-light border">
+              {{ st.name }} &middot; {{ student_code(st.id) }}
+              {% if st.cohort %}&middot; {{ st.cohort.name }}{% endif %}
+            </span>
           {% else %}
             <span class="text-muted">No students yet.</span>
           {% endfor %}

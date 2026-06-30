@@ -5,6 +5,7 @@ from extensions import db
 
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"), nullable=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
 
     scores = db.relationship("ScoreEntry", backref="student", cascade="all, delete-orphan")
@@ -17,6 +18,7 @@ class Cohort(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
 
+    students = db.relationship("Student", backref="cohort")
     sessions = db.relationship("WorkshopSession", backref="cohort")
 
     def __repr__(self) -> str:

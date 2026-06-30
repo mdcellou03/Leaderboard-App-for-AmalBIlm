@@ -45,8 +45,13 @@ def register_admin_routes(app: Flask) -> None:
     @login_required
     def add_student():
         name = (request.form.get("name") or "").strip()
+        cohort_id = _optional_int_field("cohort_id")
         if not name:
             flash("Student name is required.", "error")
+            return redirect(url_for("admin"))
+
+        if cohort_id and not db.session.get(Cohort, cohort_id):
+            flash("Selected cohort does not exist.", "error")
             return redirect(url_for("admin"))
 
         try:
@@ -55,11 +60,15 @@ def register_admin_routes(app: Flask) -> None:
                 flash("That student already exists.", "error")
                 return redirect(url_for("admin"))
 
-            student = Student(name=name)
+            student = Student(name=name, cohort_id=cohort_id)
             db.session.add(student)
             db.session.commit()
 
-            for sess in WorkshopSession.query.all():
+            sessions_query = WorkshopSession.query
+            if cohort_id is not None:
+                sessions_query = sessions_query.filter_by(cohort_id=cohort_id)
+
+            for sess in sessions_query.all():
                 exists = ScoreEntry.query.filter_by(
                     student_id=student.id,
                     workshop_session_id=sess.id,
@@ -110,7 +119,11 @@ def register_admin_routes(app: Flask) -> None:
         db.session.add(workshop_session)
         db.session.commit()
 
-        for student in Student.query.all():
+        students_query = Student.query
+        if cohort_id is not None:
+            students_query = students_query.filter_by(cohort_id=cohort_id)
+
+        for student in students_query.all():
             db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
         db.session.commit()
 
@@ -121,7 +134,11 @@ def register_admin_routes(app: Flask) -> None:
     @login_required
     def admin_session(workshop_session_id: int):
         workshop_session = WorkshopSession.query.get_or_404(workshop_session_id)
-        students = Student.query.order_by(Student.name.asc()).all()
+        students_query = Student.query
+        if workshop_session.cohort_id is not None:
+            students_query = students_query.filter_by(cohort_id=workshop_session.cohort_id)
+
+        students = students_query.order_by(Student.name.asc()).all()
         entries = ScoreEntry.query.filter_by(workshop_session_id=workshop_session_id).all()
         entry_by_student = {entry.student_id: entry for entry in entries}
         return render_template(
@@ -135,7 +152,11 @@ def register_admin_routes(app: Flask) -> None:
     @login_required
     def save_session(workshop_session_id: int):
         workshop_session = WorkshopSession.query.get_or_404(workshop_session_id)
-        students = Student.query.all()
+        students_query = Student.query
+        if workshop_session.cohort_id is not None:
+            students_query = students_query.filter_by(cohort_id=workshop_session.cohort_id)
+
+        students = students_query.all()
 
         for student in students:
             entry = ScoreEntry.query.filter_by(

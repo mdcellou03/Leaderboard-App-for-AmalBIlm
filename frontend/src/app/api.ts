@@ -5,6 +5,8 @@ export interface ApiCohort {
 
 export interface ApiStudent {
   id: number;
+  cohort_id: number | null;
+  cohort_name: string | null;
   code: string;
   name: string;
 }
