@@ -22,6 +22,18 @@ export interface ApiSession {
   question_count: number;
 }
 
+export interface ApiSessionQuestion {
+  id: number;
+  session_id: number;
+  position: number;
+  prompt: string;
+  options: string[];
+  correct_option: "A" | "B" | "C" | "D";
+  time_limit_seconds: number;
+  points: number;
+  kahoot_question_id: string | null;
+}
+
 export interface ApiLeaderboardRow {
   id: number;
   code: string;
@@ -104,4 +116,23 @@ export async function fetchCoreData() {
     sessions: sessions.sessions,
     leaderboard: leaderboard.leaderboard,
   };
+}
+
+export async function fetchSessionQuestions(sessionId: number): Promise<ApiSessionQuestion[]> {
+  const data = await fetchJson<{ questions: ApiSessionQuestion[] }>(`/api/sessions/${sessionId}/questions`);
+  return data.questions;
+}
+
+export async function createSessionQuestion(
+  sessionId: number,
+  payload: {
+    prompt: string;
+    options: string[];
+    correct_option: "A" | "B" | "C" | "D";
+    time_limit_seconds: number;
+    points: number;
+  },
+): Promise<ApiSessionQuestion> {
+  const data = await postJson<{ question: ApiSessionQuestion }>(`/api/sessions/${sessionId}/questions`, payload);
+  return data.question;
 }

@@ -7,7 +7,7 @@ import {
   Clock, Download, FileText, Link2, ExternalLink,
   ChevronRight, Save, Award, BookOpen, LogOut,
 } from "lucide-react";
-import { fetchAuthState, fetchCoreData, loginAdmin, logoutAdmin, type ApiCohort, type ApiLeaderboardRow, type ApiSession, type ApiStudent } from "./api";
+import { createSessionQuestion, fetchAuthState, fetchCoreData, fetchSessionQuestions, loginAdmin, logoutAdmin, type ApiCohort, type ApiLeaderboardRow, type ApiSession, type ApiSessionQuestion, type ApiStudent } from "./api";
 
 // ============================================================
 // TYPES
@@ -21,7 +21,7 @@ type GradeStatus = "draft" | "reviewed" | "published";
 
 interface Cohort { id: string; name: string; term: string; status: "active" | "archived"; sessionCount: number; studentCount: number; }
 interface Student { id: string; code: string; name: string; cohortId: string; playerId?: string; attendance: number; totalSessions: number; totalPoints: number; rank: number; avatarId: number; badges: string[]; streak: number; joinDate: string; }
-interface Session { id: string; cohortId: string; num: number; title: string; date: string; presenter: string; status: SessionStatus; kahootStatus: KahootStatus; notes?: string; }
+interface Session { id: string; cohortId: string; num: number; title: string; date: string; presenter: string; status: SessionStatus; kahootStatus: KahootStatus; notes?: string; questionCount?: number; }
 interface SessionGrade { studentId: string; present: boolean; punctual: boolean; deliverable: boolean; kahootPts: number; participation: number; teamwork: number; adab: number; penalty: number; penaltyNote: string; notes?: string; status: GradeStatus; }
 interface KahootResult { nickname: string; identifier: string; studentId: string | null; correct: number; total: number; kahootPts: number; appPts: number; matchStatus: "matched" | "unmatched" | "review"; }
 interface KahootQuestion { id: string; text: string; timeLimit: number; points: number; }
@@ -208,6 +208,7 @@ const mapApiSessions = (sessions: ApiSession[]): Session[] => {
     status: session.scored_entries > 0 ? "review" : "draft",
     kahootStatus: "questions-ready",
     notes: `${session.scored_entries}/${session.score_entries} score entries completed.`,
+    questionCount: session.question_count,
   }));
 };
 
@@ -1301,12 +1302,106 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
 const SessionWorkspaceScreen = (props: ScreenProps) => {
   const { activeCohort, cohorts, students, sessions, selectedSessionId, setSelectedSessionId, setScreen, onTVMode } = props;
   const [tab, setTab] = useState<SessionWorkspaceTab>("overview");
+  const [questions, setQuestions] = useState<ApiSessionQuestion[]>([]);
+  const [questionsStatus, setQuestionsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [questionError, setQuestionError] = useState("");
+  const [questionForm, setQuestionForm] = useState({
+    prompt: "",
+    optionA: "",
+    optionB: "",
+    optionC: "",
+    optionD: "",
+    correctOption: "A" as "A" | "B" | "C" | "D",
+    timeLimit: 20,
+    points: 1000,
+  });
 
   const cohort = cohorts.find(c => c.id === activeCohort);
   const cohortSessions = [...sessions].sort((a, b) => a.num - b.num);
   const selectedSession = sessions.find(s => s.id === selectedSessionId) ?? sessions[0];
   const sessionLabel = selectedSession ? `Session ${selectedSession.num} — ${selectedSession.title}` : "No session selected";
   const pendingReview = selectedSession?.status === "review" || selectedSession?.kahootStatus === "results-imported";
+  const visibleQuestionCount = questionsStatus === "ready" ? questions.length : selectedSession?.questionCount ?? 0;
+
+  useEffect(() => {
+    if (!selectedSession) return;
+
+    const numericSessionId = Number(selectedSession.id);
+    if (!Number.isFinite(numericSessionId)) {
+      setQuestions([]);
+      setQuestionsStatus("ready");
+      return;
+    }
+
+    let cancelled = false;
+    setQuestionsStatus("loading");
+    setQuestionError("");
+
+    fetchSessionQuestions(numericSessionId)
+      .then(nextQuestions => {
+        if (cancelled) return;
+        setQuestions(nextQuestions);
+        setQuestionsStatus("ready");
+      })
+      .catch(error => {
+        if (cancelled) return;
+        console.warn("Could not load session questions.", error);
+        setQuestions([]);
+        setQuestionsStatus("error");
+        setQuestionError("Could not load saved questions for this session.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSession?.id]);
+
+  const updateQuestionField = <Field extends keyof typeof questionForm>(field: Field, value: (typeof questionForm)[Field]) => {
+    setQuestionForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const submitQuestion = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedSession) return;
+
+    const numericSessionId = Number(selectedSession.id);
+    if (!Number.isFinite(numericSessionId)) {
+      setQuestionError("Questions can only be saved after this session exists in the backend.");
+      return;
+    }
+
+    const options = [questionForm.optionA, questionForm.optionB, questionForm.optionC, questionForm.optionD]
+      .map(option => option.trim())
+      .filter(Boolean);
+
+    setQuestionError("");
+
+    try {
+      const createdQuestion = await createSessionQuestion(numericSessionId, {
+        prompt: questionForm.prompt.trim(),
+        options,
+        correct_option: questionForm.correctOption,
+        time_limit_seconds: questionForm.timeLimit,
+        points: questionForm.points,
+      });
+
+      setQuestions(prev => [...prev, createdQuestion]);
+      setQuestionsStatus("ready");
+      setQuestionForm(prev => ({
+        ...prev,
+        prompt: "",
+        optionA: "",
+        optionB: "",
+        optionC: "",
+        optionD: "",
+        correctOption: "A",
+      }));
+    } catch (error) {
+      console.warn("Could not save question.", error);
+      setQuestionError("Could not save this question. Check the prompt, options, and correct answer.");
+    }
+  };
+  const availableCorrectOptions = ["A", "B", questionForm.optionC.trim() ? "C" : "", questionForm.optionD.trim() ? "D" : ""].filter(Boolean) as Array<"A" | "B" | "C" | "D">;
 
   const tabButton = (id: SessionWorkspaceTab, label: string): React.CSSProperties => ({
     padding: "8px 14px",
@@ -1384,7 +1479,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
             <StatCard label="Students" value={students.length} sub="in selected cohort" accent="#C8960C" />
             <StatCard label="Session Date" value={fmtDate(selectedSession.date)} sub={selectedSession.presenter} accent="#2A7A5A" />
-            <StatCard label="Quiz State" value={KAHOOT_STATUS_CFG[selectedSession.kahootStatus].label} sub="Kahoot workflow" accent="#6366f1" />
+            <StatCard label="Questions" value={visibleQuestionCount} sub={KAHOOT_STATUS_CFG[selectedSession.kahootStatus].label} accent="#6366f1" />
             <StatCard label="Review" value={pendingReview ? "Needed" : "Clear"} sub="before publishing scores" accent={pendingReview ? "#F59E0B" : "#10B981"} />
           </div>
 
@@ -1422,15 +1517,106 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
       )}
 
       {tab === "questions" && (
-        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
-          <h3 style={{ margin: "0 0 6px", fontFamily: "Lora, serif", color: "var(--foreground)" }}>Session Questions</h3>
-          <p style={{ margin: "0 0 16px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
-            This is where the real build should store short engagement questions as the presenter goes. The current Kahoot page already models question drafting, API sync, live launch, and results review; the backend next needs session-question tables and a Kahoot adapter service.
-          </p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={() => setScreen("kahoot")} style={{ padding: "9px 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}><Zap size={14} /> Manage Kahoot Questions</button>
-            <button style={{ padding: "9px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "transparent", color: "var(--foreground)", fontWeight: 700, cursor: "not-allowed", opacity: 0.65 }}><Plus size={14} /> Add Question API coming next</button>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 18 }}>
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+              <div>
+                <h3 style={{ margin: "0 0 6px", fontFamily: "Lora, serif", color: "var(--foreground)" }}>Session Questions</h3>
+                <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
+                  Add short engagement questions as the presenter moves through the workshop. These are saved to the selected session first; Kahoot sync can later push this same source data outward.
+                </p>
+              </div>
+              <button onClick={() => setScreen("kahoot")} style={{ padding: "9px 14px", border: "1px solid var(--border)", borderRadius: 8, background: "transparent", color: "var(--foreground)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}><Zap size={14} /> Kahoot Tools</button>
+            </div>
+
+            {questionsStatus === "loading" && (
+              <div style={{ padding: 14, borderRadius: 8, background: "var(--secondary)", color: "var(--muted-foreground)", fontSize: 13 }}>Loading saved questions...</div>
+            )}
+
+            {questionsStatus === "error" && (
+              <div style={{ padding: 14, borderRadius: 8, background: "#FEF3C7", color: "#78350F", fontSize: 13 }}>{questionError}</div>
+            )}
+
+            {questionsStatus !== "loading" && questions.length === 0 && (
+              <div style={{ padding: 18, borderRadius: 8, background: "var(--secondary)", border: "1px dashed var(--border)", color: "var(--muted-foreground)", fontSize: 13 }}>
+                No questions saved yet for this session. Add the first one from the form on the right.
+              </div>
+            )}
+
+            {questions.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {questions.map(question => (
+                  <div key={question.id} style={{ border: "1px solid var(--border)", borderRadius: 9, padding: 13, background: "var(--background)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                      <div>
+                        <p style={{ margin: "0 0 8px", color: "var(--foreground)", fontWeight: 700, fontSize: 13 }}>
+                          {question.position}. {question.prompt}
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                          {question.options.map((option, index) => {
+                            const label = ["A", "B", "C", "D"][index];
+                            const correct = label === question.correct_option;
+                            return (
+                              <div key={`${question.id}-${label}`} style={{ padding: "6px 8px", borderRadius: 6, background: correct ? "#14532D22" : "var(--secondary)", color: correct ? "#14532D" : "var(--muted-foreground)", fontSize: 12, fontWeight: correct ? 700 : 500 }}>
+                                {label}. {option}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right", fontSize: 11, color: "var(--muted-foreground)", flexShrink: 0 }}>
+                        <div>{question.time_limit_seconds}s</div>
+                        <div>{question.points} pts</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
+          <form onSubmit={submitQuestion} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18, display: "flex", flexDirection: "column", gap: 12, alignSelf: "start" }}>
+            <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)", fontSize: 16 }}>Add Question</h3>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Prompt</label>
+            <textarea rows={3} value={questionForm.prompt} onChange={event => updateQuestionField("prompt", event.target.value)} placeholder="Type the question the presenter wants to ask..." style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 8, padding: 10, background: "var(--background)", color: "var(--foreground)", resize: "vertical", fontFamily: "inherit" }} />
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {([
+                ["optionA", "A", "Required"],
+                ["optionB", "B", "Required"],
+                ["optionC", "C", "Optional"],
+                ["optionD", "D", "Optional"],
+              ] as const).map(([field, label, placeholder]) => (
+                <div key={field}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>{label}</label>
+                  <input value={questionForm[field]} onChange={event => updateQuestionField(field, event.target.value)} placeholder={placeholder} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>Correct</label>
+                <select value={questionForm.correctOption} onChange={event => updateQuestionField("correctOption", event.target.value as "A" | "B" | "C" | "D")} style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }}>
+                  {availableCorrectOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>Seconds</label>
+                <input type="number" min={5} max={240} value={questionForm.timeLimit} onChange={event => updateQuestionField("timeLimit", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>Points</label>
+                <input type="number" min={0} max={2000} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+              </div>
+            </div>
+
+            {questionError && <div style={{ padding: "9px 10px", borderRadius: 7, background: "#FEE2E2", color: "#7F1D1D", fontSize: 12 }}>{questionError}</div>}
+
+            <button type="submit" style={{ padding: "10px 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <Plus size={14} /> Save Question
+            </button>
+          </form>
         </div>
       )}
 
