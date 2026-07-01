@@ -7,7 +7,25 @@ from models import ScoreEntry, Student, WorkshopSession
 from services.students import student_code
 
 
+MAX_PARTICIPATION_SCORE = 10
+MAX_TEAMWORK_SCORE = 10
+MAX_CONDUCT_SCORE = 10
+
+ATTENDANCE_POINTS = 20
+PUNCTUALITY_POINTS = 10
+DELIVERABLE_POINTS = 20
+PARTICIPATION_MULTIPLIER = 6
+TEAMWORK_MULTIPLIER = 4
+CONDUCT_MULTIPLIER = 5
+
+
 def compute_base_points(entry: ScoreEntry, workshop_session: WorkshopSession) -> int:
+    if any(
+        getattr(entry, field, None)
+        for field in ["kahoot_points", "participation_score", "teamwork_score", "conduct_score", "penalty_points"]
+    ) or entry.deliverable:
+        return compute_rubric_points(entry)
+
     if not entry.present:
         return 0
 
@@ -60,6 +78,46 @@ def compute_base_points(entry: ScoreEntry, workshop_session: WorkshopSession) ->
     total += deliverables
 
     return total
+
+
+def compute_rubric_points(entry: ScoreEntry) -> int:
+    if not entry.present:
+        return 0
+
+    total = ATTENDANCE_POINTS
+    total += PUNCTUALITY_POINTS if entry.punctual else 0
+    total += DELIVERABLE_POINTS if entry.deliverable else 0
+    total += int(entry.kahoot_points or 0)
+    total += clamp_int(entry.participation_score, 0, MAX_PARTICIPATION_SCORE) * PARTICIPATION_MULTIPLIER
+    total += clamp_int(entry.teamwork_score, 0, MAX_TEAMWORK_SCORE) * TEAMWORK_MULTIPLIER
+    total += clamp_int(entry.conduct_score, 0, MAX_CONDUCT_SCORE) * CONDUCT_MULTIPLIER
+    total -= int(entry.penalty_points or 0)
+
+    return max(0, total)
+
+
+def apply_rubric_payload(entry: ScoreEntry, payload: dict) -> ScoreEntry:
+    entry.present = bool(payload.get("present", False))
+    entry.punctual = bool(payload.get("punctual", False))
+    entry.deliverable = bool(payload.get("deliverable", False))
+    entry.kahoot_points = clamp_int(payload.get("kahoot_points"), 0, 2000)
+    entry.participation_score = clamp_int(payload.get("participation_score"), 0, MAX_PARTICIPATION_SCORE)
+    entry.teamwork_score = clamp_int(payload.get("teamwork_score"), 0, MAX_TEAMWORK_SCORE)
+    entry.conduct_score = clamp_int(payload.get("conduct_score"), 0, MAX_CONDUCT_SCORE)
+    entry.penalty_points = clamp_int(payload.get("penalty_points"), 0, 1000)
+    entry.notes = str(payload.get("notes", "")).strip()
+    entry.status = str(payload.get("status", "draft")).strip() or "draft"
+    entry.base_points = compute_rubric_points(entry)
+    return entry
+
+
+def clamp_int(value, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = minimum
+
+    return max(minimum, min(maximum, parsed))
 
 
 def compute_leaderboard(cohort_id: Optional[int] = None) -> List[dict]:

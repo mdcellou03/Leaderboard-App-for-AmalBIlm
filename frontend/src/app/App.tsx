@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Trophy, Tv, Users, Calendar,
   ClipboardList, Zap, BarChart2, ChevronDown,
   Search, Plus, Edit3, Lock, ArrowLeft,
   RefreshCw, X, AlignLeft, Check, AlertTriangle,
   Clock, Download, FileText, Link2, ExternalLink,
-  ChevronRight, Save, Award, BookOpen, LogOut,
+  ChevronRight, Save, Award, BookOpen, LogOut, Trash2,
 } from "lucide-react";
-import { createSessionQuestion, fetchAuthState, fetchCoreData, fetchSessionQuestions, loginAdmin, logoutAdmin, type ApiCohort, type ApiLeaderboardRow, type ApiSession, type ApiSessionQuestion, type ApiStudent } from "./api";
+import { createCohort, createSession, createSessionQuestion, createStudent, deleteStudent, fetchAuthState, fetchCoreData, fetchLeaderboard, fetchSessionQuestions, fetchSessionScores, loginAdmin, logoutAdmin, saveSessionScores, updateStudent, type ApiCohort, type ApiLeaderboardRow, type ApiScoreEntry, type ApiSession, type ApiSessionQuestion, type ApiStudent } from "./api";
 
 // ============================================================
 // TYPES
@@ -36,18 +36,14 @@ interface ScreenProps {
   setSelectedSessionId: (id: string) => void;
   setScreen: (s: AdminScreen) => void;
   onTVMode: () => void;
+  refreshData: () => Promise<void>;
 }
 
 // ============================================================
 // MOCK DATA
 // ============================================================
 
-const COHORTS: Cohort[] = [
-  { id: "c1", name: "Spring 2026",  term: "Spring 2026 Cohort",  status: "active",   sessionCount: 14, studentCount: 8 },
-  { id: "c2", name: "Summer 2026",  term: "Summer 2026 Cohort",  status: "active",   sessionCount: 2,  studentCount: 4 },
-  { id: "c3", name: "Fall 2026",    term: "Fall 2026 Cohort",    status: "active",   sessionCount: 0,  studentCount: 0 },
-  { id: "c0", name: "Fall 2025",    term: "Fall 2025 Cohort",    status: "archived", sessionCount: 12, studentCount: 6 },
-];
+const COHORTS: Cohort[] = [];
 
 const BADGE_DEFS: Record<string, { symbol: string; label: string; color: string }> = {
   "top-scorer":         { symbol: "★", label: "Top Scorer",        color: "#B8860B" },
@@ -58,22 +54,10 @@ const BADGE_DEFS: Record<string, { symbol: string; label: string; color: string 
   "deliverable":        { symbol: "■", label: "All Delivered",     color: "#1B5E20" },
 };
 
-const STUDENTS: Student[] = [
-  { id: "s1",  code: "STU-001", name: "Ibrahim Al-Rashid", cohortId: "c1", playerId: "Ibrahim_AR",   attendance: 12, totalSessions: 13, totalPoints: 2840, rank: 1, avatarId: 0, badges: ["top-scorer","perfect-attendance","streak-5","adab"],  streak: 8,  joinDate: "2026-01-10" },
-  { id: "s2",  code: "STU-002", name: "Fatimah Noor",       cohortId: "c1", playerId: "FatimahN",     attendance: 13, totalSessions: 13, totalPoints: 2710, rank: 2, avatarId: 1, badges: ["perfect-attendance","deliverable","adab","team-player"], streak: 13, joinDate: "2026-01-10" },
-  { id: "s3",  code: "STU-003", name: "Yusuf Karimi",        cohortId: "c1", playerId: "YusufK",       attendance: 11, totalSessions: 13, totalPoints: 2590, rank: 3, avatarId: 2, badges: ["streak-5","team-player"],                               streak: 5,  joinDate: "2026-01-10" },
-  { id: "s4",  code: "STU-004", name: "Maryam Hassan",       cohortId: "c1", playerId: "Maryam_H",    attendance: 12, totalSessions: 13, totalPoints: 2440, rank: 4, avatarId: 3, badges: ["deliverable","adab"],                                    streak: 4,  joinDate: "2026-01-10" },
-  { id: "s5",  code: "STU-005", name: "Umar Siddiqui",       cohortId: "c1", playerId: "UmarS",        attendance: 10, totalSessions: 13, totalPoints: 2280, rank: 5, avatarId: 4, badges: ["team-player"],                                           streak: 3,  joinDate: "2026-01-17" },
-  { id: "s6",  code: "STU-006", name: "Ali Mahmud",           cohortId: "c1", playerId: "ali_mahmud",  attendance: 11, totalSessions: 13, totalPoints: 2110, rank: 6, avatarId: 5, badges: ["deliverable"],                                           streak: 2,  joinDate: "2026-01-17" },
-  { id: "s7",  code: "STU-007", name: "Khadijah Osman",       cohortId: "c1", playerId: undefined,     attendance: 9,  totalSessions: 13, totalPoints: 1980, rank: 7, avatarId: 6, badges: ["adab"],                                                  streak: 1,  joinDate: "2026-01-24" },
-  { id: "s8",  code: "STU-008", name: "Zaynab Idris",         cohortId: "c1", playerId: undefined,     attendance: 10, totalSessions: 13, totalPoints: 1780, rank: 8, avatarId: 7, badges: [],                                                        streak: 0,  joinDate: "2026-01-24" },
-  { id: "s9",  code: "SM-001", name: "Tariq Osman",    cohortId: "c2", playerId: "TariqO",   attendance: 2, totalSessions: 2, totalPoints: 410, rank: 1, avatarId: 2, badges: [],                    streak: 2, joinDate: "2026-06-05" },
-  { id: "s10", code: "SM-002", name: "Hana Malik",      cohortId: "c2", playerId: "HanaMalik", attendance: 1, totalSessions: 2, totalPoints: 195, rank: 2, avatarId: 7, badges: [],                    streak: 0, joinDate: "2026-06-05" },
-  { id: "s11", code: "SM-003", name: "Salim Rashid",    cohortId: "c2", playerId: "SalimR",   attendance: 2, totalSessions: 2, totalPoints: 380, rank: 3, avatarId: 4, badges: [],                    streak: 2, joinDate: "2026-06-05" },
-  { id: "s12", code: "SM-004", name: "Layla Al-Nour",   cohortId: "c2", playerId: undefined,  attendance: 2, totalSessions: 2, totalPoints: 350, rank: 4, avatarId: 3, badges: [],                    streak: 2, joinDate: "2026-06-12" },
-];
+const STUDENTS: Student[] = [];
 
-const SESSIONS: Session[] = [
+const SESSIONS: Session[] = [];
+const UNUSED_SESSION_FIXTURES: Session[] = [
   { id: "ses6",  cohortId: "c1", num: 6,  title: "Goal Setting and Personal Vision",         date: "2026-02-19", presenter: "Ustadh Tariq", status: "published", kahootStatus: "reviewed"          },
   { id: "ses7",  cohortId: "c1", num: 7,  title: "Communication and Active Listening",         date: "2026-02-26", presenter: "Sr. Amina",    status: "published", kahootStatus: "reviewed"          },
   { id: "ses8",  cohortId: "c1", num: 8,  title: "Time Management and Prioritisation",         date: "2026-03-05", presenter: "Br. Hassan",   status: "published", kahootStatus: "reviewed"          },
@@ -87,7 +71,8 @@ const SESSIONS: Session[] = [
   { id: "sm2",   cohortId: "c2", num: 2,  title: "Values-Based Decision Making",               date: "2026-06-13", presenter: "Ustadh Tariq", status: "review",    kahootStatus: "results-imported", notes: "Quiz results imported. Grades pending review." },
 ];
 
-const KAHOOT_QUESTIONS: KahootQuestion[] = [
+const KAHOOT_QUESTIONS: KahootQuestion[] = [];
+const UNUSED_KAHOOT_QUESTION_FIXTURES: KahootQuestion[] = [
   { id: "kq1", text: "Which of the 5 pillars comes first?",                       timeLimit: 20, points: 1000 },
   { id: "kq2", text: "How many times do Muslims pray daily?",                      timeLimit: 15, points: 2000 },
   { id: "kq3", text: "What is the Arabic word for charity?",                       timeLimit: 20, points: 1000 },
@@ -95,7 +80,8 @@ const KAHOOT_QUESTIONS: KahootQuestion[] = [
   { id: "kq5", text: "What city did the Prophet ﷺ migrate to during the Hijra?", timeLimit: 25, points: 2000 },
 ];
 
-const KAHOOT_RESULTS: KahootResult[] = [
+const KAHOOT_RESULTS: KahootResult[] = [];
+const UNUSED_KAHOOT_RESULT_FIXTURES: KahootResult[] = [
   { nickname: "Ibrahim_AR",  identifier: "STU-001", studentId: "s1",  correct: 4, total: 5, kahootPts: 8520, appPts: 43, matchStatus: "matched"   },
   { nickname: "FatimahN",    identifier: "STU-002", studentId: "s2",  correct: 5, total: 5, kahootPts: 9800, appPts: 50, matchStatus: "matched"   },
   { nickname: "YusufK",      identifier: "STU-003", studentId: "s3",  correct: 3, total: 5, kahootPts: 6150, appPts: 31, matchStatus: "matched"   },
@@ -133,20 +119,43 @@ const calcScore = (g: SessionGrade | undefined): number => {
 };
 
 const initGrades = (students: Student[]): Record<string, SessionGrade> => {
-  const defaults: Omit<SessionGrade, "studentId">[] = [
-    { present: true,  punctual: true,  deliverable: true,  kahootPts: 43, participation: 9,  teamwork: 8,  adab: 9,  penalty: 0, penaltyNote: "", status: "draft" },
-    { present: true,  punctual: true,  deliverable: true,  kahootPts: 50, participation: 10, teamwork: 9,  adab: 10, penalty: 0, penaltyNote: "", status: "draft" },
-    { present: true,  punctual: false, deliverable: true,  kahootPts: 31, participation: 8,  teamwork: 8,  adab: 8,  penalty: 0, penaltyNote: "", status: "draft" },
-    { present: true,  punctual: true,  deliverable: false, kahootPts: 0,  participation: 7,  teamwork: 7,  adab: 8,  penalty: 0, penaltyNote: "", status: "draft" },
-    { present: true,  punctual: true,  deliverable: true,  kahootPts: 30, participation: 7,  teamwork: 8,  adab: 7,  penalty: 0, penaltyNote: "", status: "draft" },
-    { present: true,  punctual: false, deliverable: true,  kahootPts: 21, participation: 6,  teamwork: 7,  adab: 7,  penalty: 5, penaltyNote: "Late phone use", status: "draft" },
-    { present: false, punctual: false, deliverable: false, kahootPts: 0,  participation: 0,  teamwork: 0,  adab: 0,  penalty: 0, penaltyNote: "", status: "draft" },
-    { present: true,  punctual: true,  deliverable: false, kahootPts: 0,  participation: 5,  teamwork: 6,  adab: 7,  penalty: 0, penaltyNote: "", status: "draft" },
-  ];
+  const emptyGrade: Omit<SessionGrade, "studentId"> = {
+    present: false,
+    punctual: false,
+    deliverable: false,
+    kahootPts: 0,
+    participation: 0,
+    teamwork: 0,
+    adab: 0,
+    penalty: 0,
+    penaltyNote: "",
+    status: "draft",
+  };
   const result: Record<string, SessionGrade> = {};
-  students.forEach((stu, i) => {
-    const d = defaults[i] ?? defaults[defaults.length - 1];
-    result[stu.id] = { studentId: stu.id, ...d };
+  students.forEach(stu => {
+    result[stu.id] = { studentId: stu.id, ...emptyGrade };
+  });
+  return result;
+};
+
+const mapApiScoresToGrades = (scores: ApiScoreEntry[]): Record<string, SessionGrade> => {
+  const result: Record<string, SessionGrade> = {};
+  scores.forEach(score => {
+    const studentId = String(score.student_id);
+    result[studentId] = {
+      studentId,
+      present: score.present,
+      punctual: score.punctual,
+      deliverable: score.deliverable,
+      kahootPts: score.kahoot_points,
+      participation: score.participation_score,
+      teamwork: score.teamwork_score,
+      adab: score.conduct_score,
+      penalty: score.penalty_points,
+      penaltyNote: "",
+      notes: score.notes,
+      status: score.status,
+    };
   });
   return result;
 };
@@ -155,8 +164,6 @@ const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 const mapApiCohorts = (cohorts: ApiCohort[], students: ApiStudent[], sessions: ApiSession[]): Cohort[] => {
-  if (!cohorts.length) return COHORTS;
-
   return cohorts.map(cohort => {
     const id = String(cohort.id);
     const sessionCount = sessions.filter(session => session.cohort_id === cohort.id).length;
@@ -174,40 +181,39 @@ const mapApiCohorts = (cohorts: ApiCohort[], students: ApiStudent[], sessions: A
 };
 
 const mapApiStudents = (leaderboard: ApiLeaderboardRow[], students: ApiStudent[], activeCohort: string): Student[] => {
-  if (!leaderboard.length) return STUDENTS;
+  const leaderboardById = new Map(leaderboard.map(row => [row.id, row]));
 
-  const studentsById = new Map(students.map(student => [student.id, student]));
-
-  return leaderboard.map((row, index) => ({
-    id: String(row.id),
-    code: row.code,
-    name: row.name,
-    cohortId: String(studentsById.get(row.id)?.cohort_id ?? activeCohort),
-    playerId: row.code,
-    attendance: row.attended_sessions,
-    totalSessions: Math.max(row.attended_sessions, row.current_streak),
-    totalPoints: row.total,
-    rank: row.rank,
-    avatarId: index,
-    badges: [],
-    streak: row.current_streak,
-    joinDate: "",
-  }));
+  return students.map((student, index) => {
+    const row = leaderboardById.get(student.id);
+    return {
+      id: String(student.id),
+      code: student.code,
+      name: student.name,
+      cohortId: String(student.cohort_id ?? activeCohort),
+      playerId: student.kahoot_identifier ?? "",
+      attendance: row?.attended_sessions ?? 0,
+      totalSessions: Math.max(row?.attended_sessions ?? 0, row?.current_streak ?? 0),
+      totalPoints: row?.total ?? 0,
+      rank: row?.rank ?? index + 1,
+      avatarId: index,
+      badges: [],
+      streak: row?.current_streak ?? 0,
+      joinDate: "",
+    };
+  });
 };
 
 const mapApiSessions = (sessions: ApiSession[]): Session[] => {
-  if (!sessions.length) return SESSIONS;
-
   return sessions.map((session, index) => ({
     id: String(session.id),
     cohortId: session.cohort_id ? String(session.cohort_id) : "unassigned",
     num: sessions.length - index,
-    title: session.cohort_name ? `${session.cohort_name} Session` : "Workshop Session",
+    title: session.title,
     date: session.date,
-    presenter: "TBD",
-    status: session.scored_entries > 0 ? "review" : "draft",
-    kahootStatus: "questions-ready",
-    notes: `${session.scored_entries}/${session.score_entries} score entries completed.`,
+    presenter: session.presenter || "Unassigned",
+    status: session.status,
+    kahootStatus: session.kahoot_status,
+    notes: session.notes || `${session.scored_entries}/${session.score_entries} score entries completed.`,
     questionCount: session.question_count,
   }));
 };
@@ -283,12 +289,12 @@ const GeoDivider = () => (
 );
 
 const SESSION_STATUS_CFG: Record<SessionStatus, { bg: string; text: string; label: string }> = {
-  "draft":     { bg: "#37415122", text: "#9CA3AF", label: "Draft"     },
-  "ready":     { bg: "#1E3A5F22", text: "#60A5FA", label: "Ready"     },
-  "live":      { bg: "#065F4622", text: "#34D399", label: "Live"      },
-  "review":    { bg: "#78350F22", text: "#FCD34D", label: "Review"    },
-  "published": { bg: "#14532D22", text: "#86EFAC", label: "Published" },
-  "archived":  { bg: "#1F293722", text: "#4B5563", label: "Archived"  },
+  "draft":     { bg: "#E5E7EB", text: "#374151", label: "Draft"     },
+  "ready":     { bg: "#DBEAFE", text: "#1E3A8A", label: "Ready"     },
+  "live":      { bg: "#D1FAE5", text: "#065F46", label: "Live"      },
+  "review":    { bg: "#FEF3C7", text: "#92400E", label: "Review"    },
+  "published": { bg: "#DCFCE7", text: "#166534", label: "Published" },
+  "archived":  { bg: "#F3F4F6", text: "#4B5563", label: "Archived"  },
 };
 
 const SessionStatusBadge = ({ status }: { status: SessionStatus }) => {
@@ -296,7 +302,7 @@ const SessionStatusBadge = ({ status }: { status: SessionStatus }) => {
   return (
     <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.text}44`, padding: "2px 9px", borderRadius: 9999, fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
       {status === "published" && <Check size={10} />}
-      {status === "live"     && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34D399", display: "inline-block" }} />}
+      {status === "live"     && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#166534", display: "inline-block" }} />}
       {status === "review"   && <AlertTriangle size={10} />}
       {c.label}
     </span>
@@ -304,11 +310,11 @@ const SessionStatusBadge = ({ status }: { status: SessionStatus }) => {
 };
 
 const KAHOOT_STATUS_CFG: Record<KahootStatus, { bg: string; text: string; label: string }> = {
-  "questions-ready":  { bg: "#1E3A5F22", text: "#60A5FA", label: "Questions Ready"  },
-  "exported":         { bg: "#3B1F6B22", text: "#C084FC", label: "Exported"          },
-  "hosted":           { bg: "#065F4622", text: "#34D399", label: "Hosted"            },
-  "results-imported": { bg: "#1C3A2E22", text: "#6EE7B7", label: "Results Imported"  },
-  "reviewed":         { bg: "#14532D22", text: "#86EFAC", label: "Reviewed"          },
+  "questions-ready":  { bg: "#DBEAFE", text: "#1E3A8A", label: "Questions Ready"  },
+  "exported":         { bg: "#EDE9FE", text: "#5B21B6", label: "Exported"          },
+  "hosted":           { bg: "#D1FAE5", text: "#065F46", label: "Hosted"            },
+  "results-imported": { bg: "#CCFBF1", text: "#115E59", label: "Results Imported"  },
+  "reviewed":         { bg: "#DCFCE7", text: "#166534", label: "Reviewed"          },
 };
 
 const KahootStatusBadge = ({ status }: { status: KahootStatus }) => {
@@ -321,9 +327,9 @@ const KahootStatusBadge = ({ status }: { status: KahootStatus }) => {
 };
 
 const GRADE_STATUS_CFG: Record<GradeStatus, { bg: string; text: string; label: string }> = {
-  "draft":     { bg: "#37415122", text: "#9CA3AF", label: "Draft"     },
-  "reviewed":  { bg: "#1E3A5F22", text: "#60A5FA", label: "Reviewed"  },
-  "published": { bg: "#14532D22", text: "#86EFAC", label: "Published" },
+  "draft":     { bg: "#E5E7EB", text: "#374151", label: "Draft"     },
+  "reviewed":  { bg: "#DBEAFE", text: "#1E3A8A", label: "Reviewed"  },
+  "published": { bg: "#DCFCE7", text: "#166534", label: "Published" },
 };
 
 const GradeStatusBadge = ({ status }: { status: GradeStatus }) => {
@@ -590,7 +596,10 @@ const TVMode = ({ students, session, intermission, setIntermission, onExit }: {
 // DASHBOARD
 // ============================================================
 
-const DashboardScreen = ({ activeCohort, cohorts, students, sessions, setScreen, setSelectedSessionId }: ScreenProps) => {
+const DashboardScreen = ({ activeCohort, setActiveCohort, cohorts, students, sessions, setScreen, setSelectedSessionId, refreshData }: ScreenProps) => {
+  const [cohortName, setCohortName] = useState("");
+  const [cohortError, setCohortError] = useState("");
+  const [showCohortForm, setShowCohortForm] = useState(false);
   const cohort = cohorts.find(c => c.id === activeCohort);
   const completed   = sessions.filter(s => s.status === "published" || s.status === "review" || s.status === "live");
   const upcoming    = sessions.find(s => s.status === "draft" || s.status === "ready");
@@ -600,9 +609,66 @@ const DashboardScreen = ({ activeCohort, cohorts, students, sessions, setScreen,
   const avgScore = students.length ? Math.round(students.reduce((s, x) => s + x.totalPoints, 0) / students.length) : 0;
   const avgAtt   = students.length ? Math.round(students.reduce((s, x) => s + (x.attendance / Math.max(x.totalSessions, 1)) * 100, 0) / students.length) : 0;
 
+  const submitCohort = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCohortError("");
+    try {
+      const createdCohort = await createCohort(cohortName);
+      setCohortName("");
+      setShowCohortForm(false);
+      await refreshData();
+      setActiveCohort(String(createdCohort.id));
+    } catch (error) {
+      console.warn("Could not create cohort.", error);
+      setCohortError("Could not create cohort. Use a unique cohort name.");
+    }
+  };
+
+  if (cohorts.length === 0) {
+    return (
+      <div>
+        <PageHeader title="Set Up Program" description="Create the first cohort before adding students, sessions, questions, or scores." />
+        <form onSubmit={submitCohort} style={{ maxWidth: 520, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 22, display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Cohort Name</label>
+          <input value={cohortName} onChange={event => setCohortName(event.target.value)} placeholder="Example: Summer 2026 Youth Cohort" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", background: "var(--background)", color: "var(--foreground)", fontSize: 14 }} />
+          {cohortError && <div style={{ padding: "9px 10px", borderRadius: 7, background: "#FEE2E2", color: "#7F1D1D", fontSize: 12 }}>{cohortError}</div>}
+          <button type="submit" disabled={!cohortName.trim()} style={{ padding: "10px 14px", border: "none", borderRadius: 8, background: cohortName.trim() ? "var(--primary)" : "var(--muted)", color: cohortName.trim() ? "var(--primary-foreground)" : "var(--muted-foreground)", fontWeight: 700, cursor: cohortName.trim() ? "pointer" : "not-allowed" }}>
+            Create Cohort
+          </button>
+          <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.5 }}>
+            Data flow: cohort first, then students and sessions are attached to that cohort. Scores and questions attach to sessions.
+          </p>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <PageHeader title="Dashboard" description={cohort ? `${cohort.name} · ${cohort.term}` : undefined} />
+      <PageHeader
+        title="Dashboard"
+        description={cohort ? `${cohort.name} - cohort workspace` : undefined}
+        action={
+          <button
+            onClick={() => setShowCohortForm(value => !value)}
+            style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}
+          >
+            <Plus size={14} /> New Cohort
+          </button>
+        }
+      />
+
+      {showCohortForm && (
+        <form onSubmit={submitCohort} style={{ marginBottom: 18, maxWidth: 620, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 16, display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, alignItems: "start" }}>
+          <div>
+            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Cohort name</label>
+            <input value={cohortName} onChange={event => setCohortName(event.target.value)} placeholder="Example: Fall 2026 Youth Workshop" style={{ width: "100%", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 11px", background: "var(--background)", color: "var(--foreground)", fontSize: 13, boxSizing: "border-box" }} />
+            {cohortError && <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 7, background: "#FEE2E2", color: "#7F1D1D", fontSize: 12 }}>{cohortError}</div>}
+          </div>
+          <button type="submit" disabled={!cohortName.trim()} style={{ marginTop: 21, padding: "9px 14px", border: "none", borderRadius: 8, background: cohortName.trim() ? "var(--primary)" : "var(--muted)", color: cohortName.trim() ? "var(--primary-foreground)" : "var(--muted-foreground)", fontWeight: 700, cursor: cohortName.trim() ? "pointer" : "not-allowed" }}>Create</button>
+          <button type="button" onClick={() => { setShowCohortForm(false); setCohortError(""); setCohortName(""); }} style={{ marginTop: 21, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer" }}>Cancel</button>
+        </form>
+      )}
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
@@ -645,8 +711,8 @@ const DashboardScreen = ({ activeCohort, cohorts, students, sessions, setScreen,
           {needsReview.length > 0 && (
             <div style={{ background: "var(--card)", border: "1px solid #78350F66", borderRadius: 10, padding: "16px 20px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <AlertTriangle size={15} color="#FCD34D" />
-                <h2 style={{ fontFamily: "Lora, serif", fontSize: 15, fontWeight: 600, color: "#FCD34D", margin: 0 }}>Pending Review</h2>
+                <AlertTriangle size={15} color="#92400E" />
+                <h2 style={{ fontFamily: "Lora, serif", fontSize: 15, fontWeight: 600, color: "#92400E", margin: 0 }}>Pending Review</h2>
               </div>
               {needsReview.map(ses => (
                 <div key={ses.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)", cursor: "pointer" }}
@@ -887,11 +953,16 @@ const LeaderboardScreen = (props: ScreenProps) => {
 // ============================================================
 
 const StudentsScreen = (props: ScreenProps) => {
-  const [filterCohort, setFilterCohort] = useState("all");
+  const [filterCohort, setFilterCohort] = useState(props.activeCohort || "all");
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", code: "", cohortId: "c1", playerId: "" });
+  const [form, setForm] = useState({ name: "", cohortId: props.activeCohort, playerId: "" });
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    if (props.activeCohort) setFilterCohort(props.activeCohort);
+  }, [props.activeCohort]);
 
   const filtered = props.allStudents.filter(s =>
     (filterCohort === "all" || s.cohortId === filterCohort) &&
@@ -907,10 +978,51 @@ const StudentsScreen = (props: ScreenProps) => {
   const openEdit = (s: Student) => {
     setEditingId(s.id);
     setAddOpen(false);
-    setForm({ name: s.name, code: s.code, cohortId: s.cohortId, playerId: s.playerId ?? "" });
+    setFormError("");
+    setForm({ name: s.name, cohortId: s.cohortId, playerId: s.playerId ?? "" });
   };
-  const openAdd  = () => { setAddOpen(true); setEditingId(null); setForm({ name: "", code: "", cohortId: "c1", playerId: "" }); };
-  const close    = () => { setAddOpen(false); setEditingId(null); };
+  const openAdd  = () => { setAddOpen(true); setEditingId(null); setFormError(""); setForm({ name: "", cohortId: props.activeCohort || props.cohorts[0]?.id || "", playerId: "" }); };
+  const close    = () => { setAddOpen(false); setEditingId(null); setFormError(""); };
+
+  const submitStudent = async () => {
+    setFormError("");
+    try {
+      const payload = {
+        name: form.name,
+        cohort_id: Number(form.cohortId),
+        kahoot_identifier: form.playerId.trim() || undefined,
+      };
+
+      if (editingId) {
+        await updateStudent(Number(editingId), payload);
+      } else {
+        await createStudent(payload);
+      }
+
+      close();
+      await props.refreshData();
+    } catch (error) {
+      console.warn("Could not save student.", error);
+      setFormError("Could not save student. Check the name and cohort.");
+    }
+  };
+
+  const removeStudent = async () => {
+    if (!editingStu) return;
+
+    const confirmed = window.confirm(`Delete ${editingStu.name}? This removes the student and their saved scores from this app.`);
+    if (!confirmed) return;
+
+    setFormError("");
+    try {
+      await deleteStudent(Number(editingStu.id));
+      close();
+      await props.refreshData();
+    } catch (error) {
+      console.warn("Could not delete student.", error);
+      setFormError("Could not delete student. Try again before making other changes.");
+    }
+  };
 
   const inputSt: React.CSSProperties = { width: "100%", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--background)", color: "var(--foreground)", fontSize: 13, boxSizing: "border-box" };
   const labelSt: React.CSSProperties = { display: "block", fontSize: 11, color: "var(--muted-foreground)", marginBottom: 3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -945,7 +1057,7 @@ const StudentsScreen = (props: ScreenProps) => {
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr>{["Code", "Name", "Cohort", "Player ID", "Attendance", "Points", "Rank", "Badges", ""].map(h => <th key={h} style={TH}>{h}</th>)}</tr>
+              <tr>{["Code", "Name", "Cohort", "Kahoot Match", "Attendance", "Points", "Rank", ""].map(h => <th key={h} style={TH}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {filtered.map(stu => {
@@ -966,12 +1078,11 @@ const StudentsScreen = (props: ScreenProps) => {
                     <td style={{ ...TD, color: "var(--muted-foreground)" }}>{stu.attendance}/{stu.totalSessions}</td>
                     <td style={{ ...TD, fontFamily: "monospace", fontWeight: 700 }}>{stu.totalPoints.toLocaleString()}</td>
                     <td style={{ ...TD, color: "var(--muted-foreground)" }}>#{stu.rank}</td>
-                    <td style={TD}><div style={{ display: "flex", gap: 3 }}>{stu.badges.slice(0, 2).map(b => { const d = BADGE_DEFS[b]; return d ? <span key={b} title={d.label} style={{ color: d.color, fontSize: 12 }}>{d.symbol}</span> : null; })}</div></td>
                     <td style={TD}><button onClick={() => openEdit(stu)} style={{ padding: "3px 9px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}><Edit3 size={11} /> Edit</button></td>
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={9} style={{ ...TD, textAlign: "center", color: "var(--muted-foreground)", padding: 24 }}>No students found.</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8} style={{ ...TD, textAlign: "center", color: "var(--muted-foreground)", padding: 24 }}>No students found.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -992,9 +1103,9 @@ const StudentsScreen = (props: ScreenProps) => {
                 <label style={labelSt}>
                   Student Code {!addOpen && <span style={{ color: "#f59e0b", fontStyle: "normal", textTransform: "none", letterSpacing: 0 }}>⚠ permanent</span>}
                 </label>
-                <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="e.g. STU-009" disabled={!addOpen}
-                  style={{ ...inputSt, fontFamily: "monospace", background: addOpen ? "var(--background)" : "var(--muted)", cursor: addOpen ? undefined : "not-allowed" }} />
-                {!addOpen && <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Codes link all grade history and cannot be changed after creation.</p>}
+                <input value={editingStu?.code ?? "Generated after save"} disabled
+                  style={{ ...inputSt, fontFamily: "monospace", background: "var(--muted)", cursor: "not-allowed" }} />
+                <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Permanent internal ID. If Kahoot match is blank, this code becomes the matching fallback.</p>
               </div>
               <div>
                 <label style={labelSt}>Cohort</label>
@@ -1003,16 +1114,22 @@ const StudentsScreen = (props: ScreenProps) => {
                 </select>
               </div>
               <div>
-                <label style={labelSt}>Player Identifier <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--muted-foreground)", fontWeight: 400 }}>(optional — used for quiz matching)</span></label>
-                <input value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} placeholder="e.g. STU-001 or custom handle" style={inputSt} />
+                <label style={labelSt}>Kahoot Match <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--muted-foreground)", fontWeight: 400 }}>(optional)</span></label>
+                <input value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} placeholder="Leave blank to use generated student code" style={inputSt} />
               </div>
             </div>
             <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 8, background: "var(--secondary)", fontSize: 11, color: "var(--muted-foreground)", display: "flex", gap: 7, alignItems: "flex-start" }}>
               <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
-              Student codes are permanent unique identifiers. If two students share a name, the code distinguishes them across all records.
+              Kahoot matching should use the generated student code or a deliberate Kahoot identifier. Names alone are not reliable enough for result matching.
             </div>
+            {formError && <div style={{ marginTop: 10, padding: "9px 10px", borderRadius: 7, background: "#FEE2E2", color: "#7F1D1D", fontSize: 12 }}>{formError}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-              <button style={{ flex: 1, padding: 9, borderRadius: 8, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {editingId && (
+                <button onClick={removeStudent} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #991B1B33", background: "#FEE2E2", color: "#7F1D1D", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Trash2 size={13} /> Delete
+                </button>
+              )}
+              <button onClick={submitStudent} disabled={!form.name.trim() || !form.cohortId} style={{ flex: 1, padding: 9, borderRadius: 8, border: "none", background: form.name.trim() && form.cohortId ? "var(--primary)" : "var(--muted)", color: form.name.trim() && form.cohortId ? "var(--primary-foreground)" : "var(--muted-foreground)", cursor: form.name.trim() && form.cohortId ? "pointer" : "not-allowed", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 <Save size={13} /> {addOpen ? "Add Student" : "Save Changes"}
               </button>
               <button onClick={close} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 13 }}>Cancel</button>
@@ -1031,8 +1148,31 @@ const StudentsScreen = (props: ScreenProps) => {
 const SessionsScreen = (props: ScreenProps) => {
   const [createOpen, setCreateOpen] = useState(false);
   const [viewNotes, setViewNotes] = useState<string | null>(null);
-  const [form, setForm] = useState({ cohortId: props.activeCohort, num: "", title: "", date: "", presenter: "", notes: "", includeKahoot: true, includeDeliverable: true });
+  const [form, setForm] = useState({ cohortId: props.activeCohort, title: "", date: "", startTime: "18:00", presenter: "", notes: "" });
+  const [formError, setFormError] = useState("");
   const sorted = [...props.sessions].sort((a, b) => b.num - a.num);
+
+  const submitSession = async () => {
+    setFormError("");
+    try {
+      const createdSession = await createSession({
+        cohort_id: Number(form.cohortId),
+        title: form.title,
+        presenter: form.presenter,
+        date: form.date,
+        start_time: form.startTime,
+        notes: form.notes,
+      });
+      setCreateOpen(false);
+      setForm({ cohortId: props.activeCohort || props.cohorts[0]?.id || "", title: "", date: "", startTime: "18:00", presenter: "", notes: "" });
+      await props.refreshData();
+      props.setSelectedSessionId(String(createdSession.id));
+      props.setScreen("scoring");
+    } catch (error) {
+      console.warn("Could not create session.", error);
+      setFormError("Could not create session. Check cohort, title, date, and start time.");
+    }
+  };
 
   const inputSt: React.CSSProperties = { width: "100%", padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 6, background: "var(--background)", color: "var(--foreground)", fontSize: 13, boxSizing: "border-box" };
   const labelSt: React.CSSProperties = { display: "block", fontSize: 11, color: "var(--muted-foreground)", marginBottom: 3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -1056,22 +1196,15 @@ const SessionsScreen = (props: ScreenProps) => {
                   {props.cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div><label style={labelSt}>Session #</label><input type="number" value={form.num} onChange={e => setForm(f => ({ ...f, num: e.target.value }))} placeholder="e.g. 14" style={inputSt} /></div>
             <div><label style={labelSt}>Date</label><input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={inputSt} /></div>
+            <div><label style={labelSt}>Start Time</label><input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} style={inputSt} /></div>
             <div style={{ gridColumn: "span 2" }}><label style={labelSt}>Title</label><input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Session title" style={inputSt} /></div>
             <div><label style={labelSt}>Presenter</label><input value={form.presenter} onChange={e => setForm(f => ({ ...f, presenter: e.target.value }))} placeholder="Name" style={inputSt} /></div>
             <div style={{ gridColumn: "span 3" }}><label style={labelSt}>Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional session notes…" rows={2} style={{ ...inputSt, resize: "vertical" }} /></div>
           </div>
-          <div style={{ display: "flex", gap: 20, marginBottom: 14 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
-              <input type="checkbox" checked={form.includeKahoot} onChange={e => setForm(f => ({ ...f, includeKahoot: e.target.checked }))} /> Include Kahoot scoring
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
-              <input type="checkbox" checked={form.includeDeliverable} onChange={e => setForm(f => ({ ...f, includeDeliverable: e.target.checked }))} /> Include deliverable
-            </label>
-          </div>
+          {formError && <div style={{ marginBottom: 12, padding: "9px 10px", borderRadius: 7, background: "#FEE2E2", color: "#7F1D1D", fontSize: 12 }}>{formError}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><Save size={13} /> Create Session</button>
+            <button onClick={submitSession} disabled={!form.cohortId || !form.title.trim() || !form.date || !form.startTime} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: form.cohortId && form.title.trim() && form.date && form.startTime ? "var(--primary)" : "var(--muted)", color: form.cohortId && form.title.trim() && form.date && form.startTime ? "var(--primary-foreground)" : "var(--muted-foreground)", cursor: form.cohortId && form.title.trim() && form.date && form.startTime ? "pointer" : "not-allowed", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><Save size={13} /> Create Session</button>
             <button onClick={() => setCreateOpen(false)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 13 }}>Cancel</button>
           </div>
         </div>
@@ -1129,25 +1262,102 @@ const SessionsScreen = (props: ScreenProps) => {
 // SCORING
 // ============================================================
 
-const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessionId }: ScreenProps) => {
+const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessionId, refreshData }: ScreenProps) => {
   const [grades, setGrades] = useState<Record<string, SessionGrade>>(() => initGrades(students));
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
   const [sessionStatus, setSessionStatus] = useState<GradeStatus>("draft");
   const [showDefaults, setShowDefaults] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [scoresLoading, setScoresLoading] = useState(false);
 
   const cohortSessions = [...sessions].sort((a, b) => a.num - b.num);
   const selectedSession = sessions.find(s => s.id === selectedSessionId) ?? sessions[0];
 
+  useEffect(() => {
+    if (!selectedSession) {
+      setGrades({});
+      return;
+    }
+
+    const numericSessionId = Number(selectedSession.id);
+    if (!Number.isFinite(numericSessionId)) {
+      setGrades(initGrades(students));
+      return;
+    }
+
+    let cancelled = false;
+    setScoresLoading(true);
+    setSaveError("");
+
+    fetchSessionScores(numericSessionId)
+      .then(scores => {
+        if (cancelled) return;
+        setGrades(mapApiScoresToGrades(scores));
+        setSessionStatus(scores.some(score => score.status === "published") ? "published" : scores.some(score => score.status === "reviewed") ? "reviewed" : "draft");
+      })
+      .catch(error => {
+        if (cancelled) return;
+        console.warn("Could not load scores.", error);
+        setGrades(initGrades(students));
+        setSaveError("Could not load saved scores for this session.");
+      })
+      .finally(() => {
+        if (!cancelled) setScoresLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSession?.id, students]);
+
   const setGrade = (id: string, patch: Partial<SessionGrade>) =>
     setGrades(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
+  const saveScores = async (status: GradeStatus = sessionStatus) => {
+    if (!selectedSession) return;
+
+    const numericSessionId = Number(selectedSession.id);
+    if (!Number.isFinite(numericSessionId)) {
+      setSaveError("Scores can only be saved after this session exists in the backend.");
+      return;
+    }
+
+    setSaveError("");
+    const scores = students.map(student => {
+      const grade = grades[student.id] ?? initGrades([student])[student.id];
+      return {
+        student_id: Number(student.id),
+        present: grade.present,
+        punctual: grade.punctual,
+        deliverable: grade.deliverable,
+        kahoot_points: grade.kahootPts,
+        participation_score: grade.participation,
+        teamwork_score: grade.teamwork,
+        conduct_score: grade.adab,
+        penalty_points: grade.penalty,
+        notes: grade.notes ?? "",
+        status,
+      };
+    });
+
+    try {
+      const result = await saveSessionScores(numericSessionId, { status, scores });
+      setGrades(mapApiScoresToGrades(result.scores));
+      setSessionStatus(status);
+      await refreshData();
+    } catch (error) {
+      console.warn("Could not save scores.", error);
+      setSaveError("Could not save scores. Check the backend server and try again.");
+    }
+  };
+
   const submitForReview = () => {
     setGrades(prev => { const n = { ...prev }; for (const k in n) n[k] = { ...n[k], status: "reviewed" }; return n; });
-    setSessionStatus("reviewed");
+    void saveScores("reviewed");
   };
   const lockSession = () => {
     setGrades(prev => { const n = { ...prev }; for (const k in n) n[k] = { ...n[k], status: "published" }; return n; });
-    setSessionStatus("published");
+    void saveScores("published");
   };
   const cycleStatus = (id: string) => {
     if (sessionStatus === "published") return;
@@ -1159,7 +1369,7 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
   const avgScore = students.length ? Math.round(students.map(s => calcScore(grades[s.id])).reduce((a, b) => a + b, 0) / students.length) : 0;
   const gradedCount = students.filter(s => (grades[s.id]?.status ?? "draft") !== "draft").length;
 
-  const scoreColor = (n: number) => n >= 200 ? "#34D399" : n >= 150 ? "#FCD34D" : n < 80 ? "var(--muted-foreground)" : "var(--foreground)";
+  const scoreColor = (n: number) => n >= 200 ? "#166534" : n >= 150 ? "#92400E" : n < 80 ? "var(--muted-foreground)" : "var(--foreground)";
 
   const TH2: React.CSSProperties = { padding: "7px 10px", textAlign: "center", fontWeight: 700, fontSize: 11, color: "var(--foreground)", borderRight: "1px solid var(--border)", whiteSpace: "nowrap" };
   const TD2: React.CSSProperties = { padding: "6px 10px", textAlign: "center", verticalAlign: "middle", borderRight: "1px solid var(--border)" };
@@ -1178,11 +1388,14 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button onClick={() => setShowDefaults(v => !v)}
             style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)", cursor: "pointer" }}>
-            {showDefaults ? "Hide Defaults" : "Quick Fill"}
+          {showDefaults ? "Hide Defaults" : "Quick Fill"}
+          </button>
+          <button onClick={() => void saveScores("draft")} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "var(--secondary)", color: "var(--secondary-foreground)", border: "1px solid var(--border)", cursor: "pointer", fontWeight: 600 }}>
+            Save Draft
           </button>
           {sessionStatus === "draft"    && <button onClick={submitForReview} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "var(--primary)", color: "var(--primary-foreground)", border: "none", cursor: "pointer", fontWeight: 600 }}>Mark as Reviewed</button>}
-          {sessionStatus === "reviewed" && <button onClick={lockSession} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "#14532D", color: "#86EFAC", border: "none", cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={12} />Publish Grades</button>}
-          {sessionStatus === "published" && <span style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "#14532D22", color: "#86EFAC", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}><Check size={12} />Grades Published</span>}
+          {sessionStatus === "reviewed" && <button onClick={lockSession} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "#14532D", color: "#DCFCE7", border: "none", cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 5 }}><Check size={12} />Publish Grades</button>}
+          {sessionStatus === "published" && <span style={{ padding: "7px 14px", fontSize: 12, borderRadius: 7, background: "#DCFCE7", color: "#14532D", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><Check size={12} />Grades Published</span>}
         </div>
       </div>
 
@@ -1195,6 +1408,9 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
           {selectedSession.notes && <span style={{ fontStyle: "italic" }}>{selectedSession.notes.slice(0, 80)}{selectedSession.notes.length > 80 ? "…" : ""}</span>}
         </div>
       )}
+
+      {scoresLoading && <div style={{ padding: "10px 14px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--muted-foreground)", fontSize: 13 }}>Loading saved scores...</div>}
+      {saveError && <div style={{ padding: "10px 14px", background: "#FEE2E2", borderRadius: 8, color: "#7F1D1D", fontSize: 13 }}>{saveError}</div>}
 
       {/* Quick fill */}
       {showDefaults && (
@@ -1263,9 +1479,9 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
                       <input type="checkbox" checked={!!g?.deliverable} onChange={e => setGrade(stu.id, { deliverable: e.target.checked })} disabled={!g?.present || sessionStatus === "published"} style={{ width: 15, height: 15, cursor: !g?.present ? "not-allowed" : "pointer", opacity: g?.present ? 1 : 0.3, accentColor: "var(--primary)" }} />
                     </td>
                     <td style={TD2}><input type="number" min={0} max={50} value={g?.kahootPts ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { kahootPts: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
-                    <td style={TD2}><input type="number" min={1} max={10} value={g?.participation ?? ""} placeholder="—" onChange={e => setGrade(stu.id, { participation: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
-                    <td style={TD2}><input type="number" min={1} max={10} value={g?.teamwork ?? ""} placeholder="—" onChange={e => setGrade(stu.id, { teamwork: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
-                    <td style={TD2}><input type="number" min={1} max={10} value={g?.adab ?? ""} placeholder="—" onChange={e => setGrade(stu.id, { adab: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
+                    <td style={TD2}><input type="number" min={0} max={10} value={g?.participation ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { participation: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
+                    <td style={TD2}><input type="number" min={0} max={10} value={g?.teamwork ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { teamwork: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
+                    <td style={TD2}><input type="number" min={0} max={10} value={g?.adab ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { adab: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
                     <td style={TD2}><input type="number" min={0} value={g?.penalty ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { penalty: +e.target.value })} disabled={sessionStatus === "published"} style={NUM_INPUT} /></td>
                     <td style={TD2}><span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 14, color: scoreColor(score) }}>{score}</span></td>
                     <td style={TD2}><span onClick={() => cycleStatus(stu.id)}><GradeStatusBadge status={g?.status ?? "draft"} /></span></td>
@@ -1639,7 +1855,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
 // KAHOOT
 // ============================================================
 
-const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessionId }: ScreenProps) => {
+const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessionId, setScreen }: ScreenProps) => {
   const [tab, setTab]         = useState<"questions" | "setup" | "live" | "results">("questions");
   const [apiConnected, setApiConnected] = useState(false);
   const [gameState, setGameState]       = useState<"idle" | "live" | "ended">("idle");
@@ -1681,7 +1897,15 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <PageHeader title="Kahoot" description="Draft questions, run the live quiz, and sync results to student scores" />
+      <PageHeader
+        title="Kahoot"
+        description="Prepare the selected session's Kahoot handoff and result sync"
+        action={
+          <button onClick={() => setScreen("scoring")} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
+            <ArrowLeft size={14} /> Back to Session
+          </button>
+        }
+      />
 
       {/* Session selector + current status */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1705,7 +1929,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                   background: active ? "var(--primary)" : done ? "#14532D" : "var(--muted)",
                   border: `2px solid ${active ? "var(--primary)" : done ? "#14532D" : "var(--border)"}`,
                   fontSize: 11, fontWeight: 700,
-                  color: active ? "var(--primary-foreground)" : done ? "#86EFAC" : "var(--muted-foreground)",
+                  color: active ? "var(--primary-foreground)" : done ? "#DCFCE7" : "var(--muted-foreground)",
                   flexShrink: 0,
                 }}>
                   {done ? "✓" : idx + 1}
@@ -1725,7 +1949,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
       {/* Connection card */}
       <div style={{ background: "var(--card)", border: `1px solid ${apiConnected ? "#14532D55" : "var(--border)"}`, borderRadius: 10, padding: "11px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: apiConnected ? "#34D399" : "#6B7280", flexShrink: 0 }} />
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: apiConnected ? "#166534" : "#6B7280", flexShrink: 0 }} />
           <div>
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--foreground)" }}>
               {apiConnected ? "Kahoot API connected" : "Kahoot API not connected"}
@@ -1835,7 +2059,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                 </p>
               )}
               {curStatus === "exported" && (
-                <div style={{ padding: "8px 10px", background: "#14532D22", borderRadius: 6, fontSize: 11, color: "#86EFAC", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ padding: "8px 10px", background: "#DCFCE7", borderRadius: 6, fontSize: 11, color: "#14532D", display: "flex", alignItems: "center", gap: 6 }}>
                   <Check size={11} /> Last synced 14 May 2026 at 14:32
                 </div>
               )}
@@ -1948,7 +2172,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--primary)", fontWeight: 600, width: 56, flexShrink: 0 }}>{s.playerId || s.code}</span>
                     <span style={{ fontSize: 12, color: "var(--foreground)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.playerId ? "#34D399" : "#6B7280", flexShrink: 0 }} title={s.playerId ? "Player ID configured" : "No player ID"} />
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.playerId ? "#166534" : "#6B7280", flexShrink: 0 }} title={s.playerId ? "Player ID configured" : "No player ID"} />
                   </div>
                 ))}
                 {students.length > 6 && <p style={{ fontSize: 11, color: "var(--muted-foreground)", margin: "4px 0 0" }}>+{students.length - 6} more</p>}
@@ -1989,7 +2213,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                 <span>{KAHOOT_RESULTS.length} participants</span>
                 <span>{KAHOOT_QUESTIONS.length} questions</span>
                 <span>{KAHOOT_RESULTS.filter(r => r.matchStatus === "matched").length} matched</span>
-                {unmatched.length > 0 && <span style={{ color: "#FCD34D", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={12} /> {unmatched.length} unmatched</span>}
+                {unmatched.length > 0 && <span style={{ color: "#92400E", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><AlertTriangle size={12} /> {unmatched.length} unmatched</span>}
               </div>
 
               {/* Results table */}
@@ -2026,8 +2250,8 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                           <td style={{ ...TD, fontFamily: "monospace", fontWeight: 700, color: r.appPts > 0 ? "var(--primary)" : "var(--muted-foreground)" }}>{r.appPts > 0 ? r.appPts : "—"}</td>
                           <td style={TD}>
                             {r.matchStatus === "matched"
-                              ? <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 9999, background: "#14532D22", color: "#86EFAC", fontWeight: 600 }}>✓</span>
-                              : <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 9999, background: "#78350F22", color: "#FCD34D", fontWeight: 600 }}>Review</span>}
+                              ? <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 9999, background: "#DCFCE7", color: "#14532D", fontWeight: 700 }}>✓</span>
+                              : <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 9999, background: "#FEF3C7", color: "#92400E", fontWeight: 700 }}>Review</span>}
                           </td>
                         </tr>
                       );
@@ -2169,7 +2393,7 @@ const ReportsScreen = ({ activeCohort, cohorts, students, sessions }: ScreenProp
                       <td style={{ ...TD, fontWeight: 600 }}>{s.name}</td>
                       <td style={{ ...TD, fontFamily: "monospace", fontSize: 10, color: "var(--muted-foreground)" }}>{s.code}</td>
                       <td style={{ ...TD, fontFamily: "monospace", fontWeight: 700, color: "#f59e0b" }}>{pct}%</td>
-                      <td style={TD}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 9999, background: "#78350F22", color: "#FCD34D", fontWeight: 600 }}>{pct < 70 ? "Attendance review" : "Check-in"}</span></td>
+                      <td style={TD}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 9999, background: "#FEF3C7", color: "#92400E", fontWeight: 700 }}>{pct < 70 ? "Attendance review" : "Check-in"}</span></td>
                     </tr>
                   );
                 })}
@@ -2294,17 +2518,116 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
   );
 };
 
+const PublicAccessScreen = ({
+  activeCohort,
+  setActiveCohort,
+  cohorts,
+  students,
+  onStaffLogin,
+  onTVMode,
+}: {
+  activeCohort: string;
+  setActiveCohort: (id: string) => void;
+  cohorts: Cohort[];
+  students: Student[];
+  onStaffLogin: () => void;
+  onTVMode: () => void;
+}) => {
+  const sorted = [...students].sort((a, b) => b.totalPoints - a.totalPoints);
+  const cohort = cohorts.find(c => c.id === activeCohort);
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--background)", position: "relative", padding: "28px 32px" }}>
+      <GeoBackground />
+      <div style={{ position: "relative", zIndex: 10, maxWidth: 1100, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 28 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+              <span style={{ color: "#C8960C", fontSize: 15, fontWeight: 700 }}>◆</span>
+              <span style={{ fontFamily: "Lora, Georgia, serif", color: "var(--foreground)", fontSize: 18, fontWeight: 700 }}>Amal B&apos;Ilm</span>
+            </div>
+            <h1 style={{ fontFamily: "Lora, Georgia, serif", fontSize: 34, margin: 0, color: "var(--foreground)" }}>Leaderboard</h1>
+            <p style={{ margin: "6px 0 0", color: "var(--muted-foreground)", fontSize: 14 }}>{cohort?.name ?? "No cohort selected"}</p>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {cohorts.length > 0 && (
+              <select value={activeCohort} onChange={event => setActiveCohort(event.target.value)} style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", fontSize: 13 }}>
+                {cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <button onClick={onTVMode} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}><Tv size={14} /> TV Display</button>
+            <button onClick={onStaffLogin} style={{ padding: "9px 14px", borderRadius: 8, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", fontWeight: 700 }}>Staff Login</button>
+          </div>
+        </div>
+
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr>{["Rank", "Student", "Attendance", "Points"].map(label => <th key={label} style={TH}>{label}</th>)}</tr>
+            </thead>
+            <tbody>
+              {sorted.map(student => (
+                <tr key={student.id}>
+                  <td style={{ ...TD, fontWeight: 800, color: student.rank <= 3 ? "#92400E" : "var(--muted-foreground)" }}>#{student.rank}</td>
+                  <td style={TD}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <PixelAvatar avatarId={student.avatarId} size={32} />
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{student.name}</div>
+                        <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--muted-foreground)" }}>{student.code}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ ...TD, color: "var(--muted-foreground)" }}>{student.attendance}/{student.totalSessions}</td>
+                  <td style={{ ...TD, fontFamily: "monospace", fontWeight: 800 }}>{student.totalPoints.toLocaleString()}</td>
+                </tr>
+              ))}
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ ...TD, textAlign: "center", padding: 28, color: "var(--muted-foreground)" }}>No leaderboard data yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [screen, setScreen] = useState<AdminScreen>("dashboard");
-  const [activeCohort, setActiveCohort] = useState("c1");
-  const [selectedSessionId, setSelectedSessionId] = useState("ses13");
+  const [activeCohort, setActiveCohort] = useState("");
+  const [selectedSessionId, setSelectedSessionId] = useState("");
   const [tvMode, setTvMode] = useState(false);
   const [intermission, setIntermission] = useState(false);
-  const [cohorts, setCohorts] = useState<Cohort[]>(COHORTS);
-  const [allStudents, setAllStudents] = useState<Student[]>(STUDENTS);
-  const [allSessions, setAllSessions] = useState<Session[]>(SESSIONS);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [allSessions, setAllSessions] = useState<Session[]>([]);
   const [apiStatus, setApiStatus] = useState<"loading" | "ready" | "fallback">("loading");
   const [authStatus, setAuthStatus] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const [showLogin, setShowLogin] = useState(false);
+
+  const refreshData = useCallback(async () => {
+    const data = await fetchCoreData();
+    const nextCohorts = mapApiCohorts(data.cohorts, data.students, data.sessions);
+    const nextActiveCohort = nextCohorts.some(cohort => cohort.id === activeCohort)
+      ? activeCohort
+      : nextCohorts[0]?.id ?? "";
+    const nextLeaderboard = await fetchLeaderboard(nextActiveCohort);
+    const nextStudents = mapApiStudents(nextLeaderboard, data.students, nextActiveCohort);
+    const nextSessions = mapApiSessions(data.sessions);
+    const nextSelectedSession = nextSessions.some(workshopSession => workshopSession.id === selectedSessionId)
+      ? selectedSessionId
+      : nextSessions.find(workshopSession => workshopSession.cohortId === nextActiveCohort)?.id ?? nextSessions[0]?.id ?? "";
+
+    setCohorts(nextCohorts);
+    setActiveCohort(nextActiveCohort);
+    setAllStudents(nextStudents);
+    setAllSessions(nextSessions);
+    setSelectedSessionId(nextSelectedSession);
+    setApiStatus("ready");
+  }, [activeCohort, selectedSessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2323,35 +2646,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (authStatus !== "authenticated") return;
+    if (authStatus === "checking") return;
 
     let cancelled = false;
 
-    fetchCoreData()
-      .then(data => {
+    refreshData()
+      .then(() => {
         if (cancelled) return;
-
-        const nextCohorts = mapApiCohorts(data.cohorts, data.students, data.sessions);
-        const nextActiveCohort = nextCohorts[0]?.id ?? activeCohort;
-        const nextStudents = mapApiStudents(data.leaderboard, data.students, nextActiveCohort);
-        const nextSessions = mapApiSessions(data.sessions);
-
-        setCohorts(nextCohorts);
-        setActiveCohort(nextActiveCohort);
-        setAllStudents(nextStudents);
-        setAllSessions(nextSessions);
-        setSelectedSessionId(nextSessions[0]?.id ?? selectedSessionId);
-        setApiStatus("ready");
       })
       .catch(error => {
-        console.warn("Using mock data because the backend API is unavailable.", error);
+        console.warn("Backend API unavailable.", error);
         if (!cancelled) setApiStatus("fallback");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [authStatus]);
+  }, [authStatus, refreshData]);
 
   const handleLogout = async () => {
     try {
@@ -2359,6 +2670,7 @@ export default function App() {
     } finally {
       setTvMode(false);
       setIntermission(false);
+      setShowLogin(false);
       setAuthStatus("unauthenticated");
     }
   };
@@ -2378,6 +2690,7 @@ export default function App() {
     setSelectedSessionId,
     setScreen,
     onTVMode: () => setTvMode(true),
+    refreshData,
   };
 
   if (authStatus === "checking") {
@@ -2389,7 +2702,31 @@ export default function App() {
   }
 
   if (authStatus === "unauthenticated") {
-    return <LoginScreen onLogin={() => setAuthStatus("authenticated")} />;
+    if (showLogin) {
+      return <LoginScreen onLogin={() => { setShowLogin(false); setAuthStatus("authenticated"); }} />;
+    }
+
+    return (
+      <>
+        {tvMode && (
+          <TVMode
+            students={students}
+            session={selectedSession}
+            intermission={intermission}
+            setIntermission={setIntermission}
+            onExit={() => { setTvMode(false); setIntermission(false); }}
+          />
+        )}
+        <PublicAccessScreen
+          activeCohort={activeCohort}
+          setActiveCohort={setActiveCohort}
+          cohorts={cohorts}
+          students={students}
+          onStaffLogin={() => setShowLogin(true)}
+          onTVMode={() => setTvMode(true)}
+        />
+      </>
+    );
   }
 
   return (
@@ -2416,7 +2753,7 @@ export default function App() {
       <main style={{ marginLeft: 200, flex: 1, minWidth: 0, padding: "28px 32px 48px", position: "relative", zIndex: 10 }}>
         {apiStatus === "fallback" && (
           <div style={{ marginBottom: 14, padding: "10px 14px", border: "1px solid #92400E44", borderRadius: 8, background: "#FEF3C7", color: "#78350F", fontSize: 13 }}>
-            Backend API unavailable. Showing bundled demo data.
+            Backend API unavailable. Start the Flask server, then refresh this page.
           </div>
         )}
         {screen === "dashboard"   && <DashboardScreen   {...screenProps} />}

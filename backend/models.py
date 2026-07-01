@@ -6,7 +6,8 @@ from extensions import db
 class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"), nullable=True)
-    name = db.Column(db.String(120), nullable=False, unique=True)
+    name = db.Column(db.String(120), nullable=False)
+    kahoot_identifier = db.Column(db.String(120), nullable=True)
 
     scores = db.relationship("ScoreEntry", backref="student", cascade="all, delete-orphan")
 
@@ -28,8 +29,13 @@ class Cohort(db.Model):
 class WorkshopSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"), nullable=True)
+    title = db.Column(db.String(180), nullable=False, default="Workshop Session")
+    presenter = db.Column(db.String(120), nullable=False, default="")
     session_date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.Time, nullable=False)
+    notes = db.Column(db.Text, default="")
+    status = db.Column(db.String(40), nullable=False, default="draft")
+    kahoot_status = db.Column(db.String(40), nullable=False, default="questions-ready")
 
     scores = db.relationship("ScoreEntry", backref="workshop_session", cascade="all, delete-orphan")
     questions = db.relationship(
@@ -70,7 +76,15 @@ class ScoreEntry(db.Model):
     workshop_session_id = db.Column(db.Integer, db.ForeignKey("workshop_session.id"), nullable=False)
 
     present = db.Column(db.Boolean, default=False)
+    punctual = db.Column(db.Boolean, default=False)
+    deliverable = db.Column(db.Boolean, default=False)
     arrival_time = db.Column(db.Time, nullable=True)
+    kahoot_points = db.Column(db.Integer, default=0)
+    participation_score = db.Column(db.Integer, default=0)
+    teamwork_score = db.Column(db.Integer, default=0)
+    conduct_score = db.Column(db.Integer, default=0)
+    penalty_points = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(40), nullable=False, default="draft")
 
     meaningful_question = db.Column(db.Boolean, default=False)
     distracts_others = db.Column(db.Boolean, default=False)

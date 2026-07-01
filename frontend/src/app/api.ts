@@ -9,17 +9,40 @@ export interface ApiStudent {
   cohort_name: string | null;
   code: string;
   name: string;
+  kahoot_identifier: string | null;
 }
 
 export interface ApiSession {
   id: number;
   cohort_id: number | null;
   cohort_name: string | null;
+  title: string;
+  presenter: string;
   date: string;
   start_time: string;
+  notes: string;
+  status: "draft" | "ready" | "live" | "review" | "published" | "archived";
+  kahoot_status: "questions-ready" | "exported" | "hosted" | "results-imported" | "reviewed";
   score_entries: number;
   scored_entries: number;
   question_count: number;
+}
+
+export interface ApiScoreEntry {
+  student_id: number;
+  student_code: string;
+  student_name: string;
+  present: boolean;
+  punctual: boolean;
+  deliverable: boolean;
+  kahoot_points: number;
+  participation_score: number;
+  teamwork_score: number;
+  conduct_score: number;
+  penalty_points: number;
+  notes: string;
+  status: "draft" | "reviewed" | "published";
+  total_points: number;
 }
 
 export interface ApiSessionQuestion {
@@ -86,6 +109,43 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
 }
 
+async function putJson<T>(url: string, body?: unknown): Promise<T> {
+  const token = await getCsrfToken();
+
+  return fetchJson<T>(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": token,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function patchJson<T>(url: string, body?: unknown): Promise<T> {
+  const token = await getCsrfToken();
+
+  return fetchJson<T>(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": token,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function deleteJson<T>(url: string): Promise<T> {
+  const token = await getCsrfToken();
+
+  return fetchJson<T>(url, {
+    method: "DELETE",
+    headers: {
+      "X-CSRFToken": token,
+    },
+  });
+}
+
 export async function fetchAuthState(): Promise<AuthState> {
   return fetchJson<AuthState>("/api/auth/me");
 }
@@ -103,19 +163,92 @@ export async function logoutAdmin(): Promise<AuthState> {
 }
 
 export async function fetchCoreData() {
-  const [cohorts, students, sessions, leaderboard] = await Promise.all([
+  const [cohorts, students, sessions] = await Promise.all([
     fetchJson<{ cohorts: ApiCohort[] }>("/api/cohorts"),
     fetchJson<{ students: ApiStudent[] }>("/api/students"),
     fetchJson<{ sessions: ApiSession[] }>("/api/sessions"),
-    fetchJson<{ leaderboard: ApiLeaderboardRow[] }>("/api/leaderboard"),
   ]);
 
   return {
     cohorts: cohorts.cohorts,
     students: students.students,
     sessions: sessions.sessions,
-    leaderboard: leaderboard.leaderboard,
   };
+}
+
+export async function fetchLeaderboard(cohortId?: string): Promise<ApiLeaderboardRow[]> {
+  const query = cohortId ? `?cohort_id=${encodeURIComponent(cohortId)}` : "";
+  const data = await fetchJson<{ leaderboard: ApiLeaderboardRow[] }>(`/api/leaderboard${query}`);
+  return data.leaderboard;
+}
+
+export async function createCohort(name: string): Promise<ApiCohort> {
+  const data = await postJson<{ cohort: ApiCohort }>("/api/cohorts", { name });
+  return data.cohort;
+}
+
+export async function createStudent(payload: {
+  name: string;
+  cohort_id: number;
+  kahoot_identifier?: string;
+}): Promise<ApiStudent> {
+  const data = await postJson<{ student: ApiStudent }>("/api/students", payload);
+  return data.student;
+}
+
+export async function updateStudent(
+  studentId: number,
+  payload: {
+    name: string;
+    cohort_id: number;
+    kahoot_identifier?: string;
+  },
+): Promise<ApiStudent> {
+  const data = await patchJson<{ student: ApiStudent }>(`/api/students/${studentId}`, payload);
+  return data.student;
+}
+
+export async function deleteStudent(studentId: number): Promise<void> {
+  await deleteJson<{ deleted: boolean; student_id: number }>(`/api/students/${studentId}`);
+}
+
+export async function createSession(payload: {
+  cohort_id: number;
+  title: string;
+  presenter: string;
+  date: string;
+  start_time: string;
+  notes?: string;
+}): Promise<ApiSession> {
+  const data = await postJson<{ session: ApiSession }>("/api/sessions", payload);
+  return data.session;
+}
+
+export async function fetchSessionScores(sessionId: number): Promise<ApiScoreEntry[]> {
+  const data = await fetchJson<{ scores: ApiScoreEntry[] }>(`/api/sessions/${sessionId}/scores`);
+  return data.scores;
+}
+
+export async function saveSessionScores(
+  sessionId: number,
+  payload: {
+    status?: "draft" | "reviewed" | "published";
+    scores: Array<{
+      student_id: number;
+      present: boolean;
+      punctual: boolean;
+      deliverable: boolean;
+      kahoot_points: number;
+      participation_score: number;
+      teamwork_score: number;
+      conduct_score: number;
+      penalty_points: number;
+      notes?: string;
+      status?: "draft" | "reviewed" | "published";
+    }>;
+  },
+): Promise<{ session: ApiSession; scores: ApiScoreEntry[] }> {
+  return putJson<{ session: ApiSession; scores: ApiScoreEntry[] }>(`/api/sessions/${sessionId}/scores`, payload);
 }
 
 export async function fetchSessionQuestions(sessionId: number): Promise<ApiSessionQuestion[]> {
