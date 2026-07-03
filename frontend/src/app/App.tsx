@@ -7,7 +7,7 @@ import {
   Clock, Download, FileText, Link2, ExternalLink,
   ChevronRight, Save, Award, BookOpen, LogOut, Trash2,
 } from "lucide-react";
-import { createCohort, createSession, createSessionQuestion, createStudent, deleteStudent, fetchAuthState, fetchCoreData, fetchLeaderboard, fetchSessionQuestions, fetchSessionScores, loginAdmin, logoutAdmin, saveSessionScores, updateStudent, type ApiCohort, type ApiLeaderboardRow, type ApiScoreEntry, type ApiSession, type ApiSessionQuestion, type ApiStudent } from "./api";
+import { applyKahootResults, createCohort, createKahootRun, createSession, createSessionQuestion, createStudent, deleteStudent, fetchAuthState, fetchCoreData, fetchKahootResults, fetchKahootRuns, fetchLeaderboard, fetchSessionQuestions, fetchSessionScores, importKahootResults, loginAdmin, logoutAdmin, saveSessionScores, updateKahootResult, updateKahootRun, updateStudent, type ApiCohort, type ApiKahootResult, type ApiKahootRun, type ApiLeaderboardRow, type ApiScoreEntry, type ApiSession, type ApiSessionQuestion, type ApiStudent } from "./api";
 
 // ============================================================
 // TYPES
@@ -23,7 +23,6 @@ interface Cohort { id: string; name: string; term: string; status: "active" | "a
 interface Student { id: string; code: string; name: string; cohortId: string; playerId?: string; attendance: number; totalSessions: number; totalPoints: number; rank: number; avatarId: number; badges: string[]; streak: number; joinDate: string; }
 interface Session { id: string; cohortId: string; num: number; title: string; date: string; presenter: string; status: SessionStatus; kahootStatus: KahootStatus; notes?: string; questionCount?: number; }
 interface SessionGrade { studentId: string; present: boolean; punctual: boolean; deliverable: boolean; kahootPts: number; participation: number; teamwork: number; adab: number; penalty: number; penaltyNote: string; notes?: string; status: GradeStatus; }
-interface KahootResult { nickname: string; identifier: string; studentId: string | null; correct: number; total: number; kahootPts: number; appPts: number; matchStatus: "matched" | "unmatched" | "review"; }
 interface ScreenProps {
   activeCohort: string;
   setActiveCohort: (id: string) => void;
@@ -79,16 +78,6 @@ const UNUSED_KAHOOT_QUESTION_FIXTURES: Array<{ id: string; text: string; timeLim
   { id: "kq3", text: "What is the Arabic word for charity?",                       timeLimit: 20, points: 1000 },
   { id: "kq4", text: "In which month is the Quran said to have been revealed?",   timeLimit: 20, points: 2000 },
   { id: "kq5", text: "What city did the Prophet ﷺ migrate to during the Hijra?", timeLimit: 25, points: 2000 },
-];
-
-const KAHOOT_RESULTS: KahootResult[] = [];
-const UNUSED_KAHOOT_RESULT_FIXTURES: KahootResult[] = [
-  { nickname: "Ibrahim_AR",  identifier: "STU-001", studentId: "s1",  correct: 4, total: 5, kahootPts: 8520, appPts: 43, matchStatus: "matched"   },
-  { nickname: "FatimahN",    identifier: "STU-002", studentId: "s2",  correct: 5, total: 5, kahootPts: 9800, appPts: 50, matchStatus: "matched"   },
-  { nickname: "YusufK",      identifier: "STU-003", studentId: "s3",  correct: 3, total: 5, kahootPts: 6150, appPts: 31, matchStatus: "matched"   },
-  { nickname: "MARYAM_ALT",  identifier: "",       studentId: null,  correct: 4, total: 5, kahootPts: 7800, appPts: 0,  matchStatus: "review"    },
-  { nickname: "UmarS",       identifier: "STU-005", studentId: "s5",  correct: 3, total: 5, kahootPts: 5900, appPts: 30, matchStatus: "matched"   },
-  { nickname: "ali_mahmud",  identifier: "STU-006", studentId: "s6",  correct: 2, total: 5, kahootPts: 4100, appPts: 21, matchStatus: "matched"   },
 ];
 
 const ATTENDANCE_TREND: { session: string; rate: number }[] = [
@@ -219,7 +208,7 @@ const mapApiSessions = (sessions: ApiSession[]): Session[] => {
   }));
 };
 
-const downloadSessionQuestionsCsv = (session: Session | undefined, questions: ApiSessionQuestion[]) => {
+const downloadSessionQuestionsCsv = (session: Session | undefined, questions: ApiSessionQuestion[], label = "kahoot") => {
   if (!session || questions.length === 0) return;
 
   const header = ["Question", "Answer 1", "Answer 2", "Answer 3", "Answer 4", "Correct Answer", "Time Limit", "Points"];
@@ -239,10 +228,41 @@ const downloadSessionQuestionsCsv = (session: Session | undefined, questions: Ap
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
+  const safeLabel = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "kahoot";
   link.href = url;
-  link.download = `session-${session.num}-kahoot-questions.csv`;
+  link.download = `session-${session.num}-${safeLabel}-questions.csv`;
   link.click();
   URL.revokeObjectURL(url);
+};
+
+const parseKahootResultText = (text: string) => {
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !line.toLowerCase().startsWith("identifier,") && !line.toLowerCase().startsWith("nickname,"))
+    .map(line => line.split(",").map(value => value.trim()))
+    .map(parts => {
+      const [first, second, third, fourth, fifth] = parts;
+      if (parts.length >= 5) {
+        return {
+          identifier: first,
+          nickname: second,
+          correct_count: Number(third) || 0,
+          total_questions: Number(fourth) || 0,
+          kahoot_points: Number(fifth) || 0,
+        };
+      }
+
+      return {
+        identifier: first,
+        nickname: first,
+        correct_count: Number(second) || 0,
+        total_questions: Number(third) || 0,
+        kahoot_points: Number(fourth) || 0,
+      };
+    })
+    .filter(row => row.nickname);
 };
 
 // ============================================================
@@ -1666,7 +1686,7 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
                     <td style={TD2}>
                       <input type="checkbox" checked={!!g?.deliverable} onChange={e => setGrade(stu.id, { deliverable: e.target.checked })} disabled={!g?.present || sessionStatus === "published"} style={{ width: 15, height: 15, cursor: !g?.present ? "not-allowed" : "pointer", opacity: g?.present ? 1 : 0.3, accentColor: "var(--primary)" }} />
                     </td>
-                    <td style={TD2}><input type="number" min={0} max={50} value={g?.kahootPts ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { kahootPts: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
+                <td style={TD2}><input type="number" min={0} max={20000} value={g?.kahootPts ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { kahootPts: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
                     <td style={TD2}><input type="number" min={0} max={10} value={g?.participation ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { participation: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
                     <td style={TD2}><input type="number" min={0} max={10} value={g?.teamwork ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { teamwork: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
                     <td style={TD2}><input type="number" min={0} max={10} value={g?.adab ?? ""} placeholder="0" onChange={e => setGrade(stu.id, { adab: +e.target.value })} disabled={!g?.present || sessionStatus === "published"} style={{ ...NUM_INPUT, opacity: g?.present ? 1 : 0.35 }} /></td>
@@ -1708,6 +1728,8 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
   const tab = props.workspaceTab;
   const setTab = props.setWorkspaceTab;
   const [questions, setQuestions] = useState<ApiSessionQuestion[]>([]);
+  const [kahootRuns, setKahootRuns] = useState<ApiKahootRun[]>([]);
+  const [questionRunId, setQuestionRunId] = useState("");
   const [questionsStatus, setQuestionsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [questionError, setQuestionError] = useState("");
   const [questionForm, setQuestionForm] = useState({
@@ -1742,16 +1764,22 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
     setQuestionsStatus("loading");
     setQuestionError("");
 
-    fetchSessionQuestions(numericSessionId)
-      .then(nextQuestions => {
+    Promise.all([
+      fetchSessionQuestions(numericSessionId),
+      fetchKahootRuns(numericSessionId),
+    ])
+      .then(([nextQuestions, nextRuns]) => {
         if (cancelled) return;
         setQuestions(nextQuestions);
+        setKahootRuns(nextRuns);
+        setQuestionRunId(prev => nextRuns.some(run => String(run.id) === prev) ? prev : "");
         setQuestionsStatus("ready");
       })
       .catch(error => {
         if (cancelled) return;
         console.warn("Could not load session questions.", error);
         setQuestions([]);
+        setKahootRuns([]);
         setQuestionsStatus("error");
         setQuestionError("Could not load saved questions for this session.");
       });
@@ -1788,6 +1816,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
         correct_option: questionForm.correctOption,
         time_limit_seconds: questionForm.timeLimit,
         points: questionForm.points,
+        kahoot_run_id: questionRunId ? Number(questionRunId) : null,
       });
 
       setQuestions(prev => [...prev, createdQuestion]);
@@ -1957,6 +1986,11 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
                         <p style={{ margin: "0 0 8px", color: "var(--foreground)", fontWeight: 700, fontSize: 13 }}>
                           {question.position}. {question.prompt}
                         </p>
+                        {question.kahoot_run_id && (
+                          <div style={{ marginBottom: 8, display: "inline-flex", padding: "3px 8px", borderRadius: 999, background: "#E0F2FE", color: "#075985", border: "1px solid #07598533", fontSize: 11, fontWeight: 700 }}>
+                            {kahootRuns.find(run => run.id === question.kahoot_run_id)?.title ?? "Kahoot section"}
+                          </div>
+                        )}
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                           {question.options.map((option, index) => {
                             const label = ["A", "B", "C", "D"][index];
@@ -1982,6 +2016,16 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
 
           <form onSubmit={submitQuestion} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18, display: "flex", flexDirection: "column", gap: 12, alignSelf: "start" }}>
             <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)", fontSize: 16 }}>Add Question</h3>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Kahoot section</label>
+              <select value={questionRunId} onChange={event => setQuestionRunId(event.target.value)} style={{ marginTop: 5, width: "100%", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }}>
+                <option value="">Session-level question</option>
+                {kahootRuns.map(run => <option key={run.id} value={run.id}>{run.title}</option>)}
+              </select>
+              <p style={{ margin: "5px 0 0", color: "var(--muted-foreground)", fontSize: 11, lineHeight: 1.4 }}>
+                Create Kahoot sections from the Kahoot page when a session needs multiple short quizzes.
+              </p>
+            </div>
             <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Prompt</label>
             <textarea rows={3} value={questionForm.prompt} onChange={event => updateQuestionField("prompt", event.target.value)} placeholder="Type the question the presenter wants to ask..." style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 8, padding: 10, background: "var(--background)", color: "var(--foreground)", resize: "vertical", fontFamily: "inherit" }} />
 
@@ -2044,17 +2088,29 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
 // KAHOOT
 // ============================================================
 
-const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessionId, setWorkspaceTab, setScreen }: ScreenProps) => {
+const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessionId, setWorkspaceTab, setScreen, refreshData }: ScreenProps) => {
   const [tab, setTab]         = useState<"questions" | "setup" | "live" | "results">("questions");
   const [gameState, setGameState]       = useState<"idle" | "live" | "ended">("idle");
   const [gamePin, setGamePin]           = useState("");
   const [manualAssign, setManualAssign] = useState<Record<string, string>>({});
   const [sessionQuestions, setSessionQuestions] = useState<ApiSessionQuestion[]>([]);
+  const [kahootRuns, setKahootRuns] = useState<ApiKahootRun[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [kahootResults, setKahootResults] = useState<ApiKahootResult[]>([]);
+  const [newRunTitle, setNewRunTitle] = useState("");
+  const [newRunLabel, setNewRunLabel] = useState("");
+  const [linkForm, setLinkForm] = useState({ kahootUrl: "", reportUrl: "" });
+  const [importText, setImportText] = useState("");
+  const [kahootMessage, setKahootMessage] = useState("");
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState("");
 
   const cohortSessions  = [...sessions].sort((a, b) => a.num - b.num);
   const selectedSession = sessions.find(s => s.id === selectedSessionId) ?? sessions[0];
+  const selectedRun = kahootRuns.find(run => String(run.id) === selectedRunId) ?? kahootRuns[0];
+  const selectedRunQuestions = selectedRun
+    ? sessionQuestions.filter(question => question.kahoot_run_id === selectedRun.id)
+    : sessionQuestions.filter(question => !question.kahoot_run_id);
   const curStatus       = selectedSession?.kahootStatus ?? "questions-ready";
 
   const STEPS: { key: KahootStatus; label: string }[] = [
@@ -2065,9 +2121,20 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
     { key: "reviewed",          label: "Apply Scores"  },
   ];
   const curStepIdx  = STEPS.findIndex(s => s.key === curStatus);
-  const importedResults: KahootResult[] = [];
+  const importedResults = kahootResults.map(result => ({
+    id: result.id,
+    nickname: result.nickname,
+    identifier: result.identifier ?? "",
+    studentId: result.student_id ? String(result.student_id) : null,
+    correct: result.correct_count,
+    total: result.total_questions,
+    kahootPts: result.kahoot_points,
+    appPts: result.awarded_points,
+    matchStatus: result.match_status,
+    applied: result.applied,
+  }));
   const hasResults  = importedResults.length > 0;
-  const unmatched   = importedResults.filter(r => r.matchStatus === "review");
+  const unmatched   = importedResults.filter(r => r.matchStatus !== "matched");
 
   useEffect(() => {
     if (!selectedSession) {
@@ -2085,15 +2152,25 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
     setQuestionsLoading(true);
     setQuestionsError("");
 
-    fetchSessionQuestions(sessionId)
-      .then(questions => {
+    Promise.all([
+      fetchSessionQuestions(sessionId),
+      fetchKahootRuns(sessionId),
+    ])
+      .then(async ([questions, runs]) => {
         if (cancelled) return;
         setSessionQuestions(questions);
+        setKahootRuns(runs);
+        const nextRun = runs.find(run => String(run.id) === selectedRunId) ?? runs[0];
+        setSelectedRunId(nextRun ? String(nextRun.id) : "");
+        setLinkForm({ kahootUrl: nextRun?.kahoot_url ?? "", reportUrl: nextRun?.report_url ?? "" });
+        setKahootResults(nextRun ? await fetchKahootResults(nextRun.id) : []);
       })
       .catch(error => {
         if (cancelled) return;
         console.warn("Could not load Kahoot session questions.", error);
         setSessionQuestions([]);
+        setKahootRuns([]);
+        setKahootResults([]);
         setQuestionsError("Could not load saved questions for this session.");
       })
       .finally(() => {
@@ -2103,7 +2180,111 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
     return () => {
       cancelled = true;
     };
-  }, [selectedSession?.id]);
+  }, [selectedSession?.id, selectedRunId]);
+
+  useEffect(() => {
+    if (!selectedRun) return;
+    setLinkForm({ kahootUrl: selectedRun.kahoot_url ?? "", reportUrl: selectedRun.report_url ?? "" });
+    fetchKahootResults(selectedRun.id)
+      .then(setKahootResults)
+      .catch(error => {
+        console.warn("Could not load Kahoot results.", error);
+        setKahootResults([]);
+      });
+  }, [selectedRun?.id]);
+
+  const createRun = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedSession || !newRunTitle.trim()) return;
+
+    try {
+      const run = await createKahootRun(Number(selectedSession.id), {
+        title: newRunTitle.trim(),
+        section_label: newRunLabel.trim(),
+      });
+      setKahootRuns(prev => [...prev, run]);
+      setSelectedRunId(String(run.id));
+      setNewRunTitle("");
+      setNewRunLabel("");
+      setKahootMessage("Kahoot section created. Assign questions to it from Session Workspace.");
+    } catch (error) {
+      console.warn("Could not create Kahoot section.", error);
+      setKahootMessage("Could not create the Kahoot section.");
+    }
+  };
+
+  const saveRunLinks = async (status?: ApiKahootRun["status"]) => {
+    if (!selectedRun) return;
+
+    try {
+      const run = await updateKahootRun(selectedRun.id, {
+        kahoot_url: linkForm.kahootUrl,
+        report_url: linkForm.reportUrl,
+        status,
+      });
+      setKahootRuns(prev => prev.map(item => item.id === run.id ? run : item));
+      setKahootMessage(status ? `Kahoot section marked ${status}.` : "Kahoot links saved.");
+      await refreshData();
+    } catch (error) {
+      console.warn("Could not save Kahoot section.", error);
+      setKahootMessage("Could not save the Kahoot section.");
+    }
+  };
+
+  const importResults = async () => {
+    if (!selectedRun) return;
+    const parsedRows = parseKahootResultText(importText);
+    if (!parsedRows.length) {
+      setKahootMessage("Paste at least one result row before importing.");
+      return;
+    }
+
+    try {
+      const response = await importKahootResults(selectedRun.id, parsedRows);
+      setKahootResults(response.results);
+      setKahootRuns(prev => prev.map(item => item.id === response.kahoot_run.id ? response.kahoot_run : item));
+      setImportText("");
+      setKahootMessage(`${response.results.length} result rows imported.`);
+      await refreshData();
+    } catch (error) {
+      console.warn("Could not import Kahoot results.", error);
+      setKahootMessage("Could not import those results. Check the row format.");
+    }
+  };
+
+  const saveResultMatch = async (resultId: number, studentId: string) => {
+    try {
+      const updated = await updateKahootResult(resultId, { student_id: studentId ? Number(studentId) : null });
+      setKahootResults(prev => prev.map(item => item.id === updated.id ? updated : item));
+      setManualAssign(prev => {
+        const next = { ...prev };
+        delete next[String(resultId)];
+        return next;
+      });
+    } catch (error) {
+      console.warn("Could not update Kahoot match.", error);
+      setKahootMessage("Could not update that match.");
+    }
+  };
+
+  const applyImportedResults = async () => {
+    if (!selectedRun) return;
+    if (unmatched.length > 0) {
+      setKahootMessage("Resolve unmatched rows before applying scores.");
+      return;
+    }
+
+    try {
+      const response = await applyKahootResults(selectedRun.id);
+      setKahootResults(response.results);
+      setKahootRuns(prev => prev.map(item => item.id === response.kahoot_run.id ? response.kahoot_run : item));
+      setKahootMessage(`${response.applied_count} result rows applied to the score sheet.`);
+      await refreshData();
+    } catch (error) {
+      console.warn("Could not apply Kahoot results.", error);
+      setKahootMessage("Could not apply results to the score sheet.");
+    }
+  };
 
   const T = (active: boolean): React.CSSProperties => ({
     padding: "8px 18px", fontSize: 13, fontWeight: active ? 600 : 400, background: "transparent",
@@ -2141,10 +2322,21 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
           style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 12px", fontSize: 13 }}>
           {cohortSessions.map(s => <option key={s.id} value={s.id}>Session {s.num} — {s.title}</option>)}
         </select>
+        <select value={selectedRun?.id ? String(selectedRun.id) : ""} onChange={e => setSelectedRunId(e.target.value)}
+          style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 12px", fontSize: 13 }}>
+          <option value="">No Kahoot section yet</option>
+          {kahootRuns.map(run => <option key={run.id} value={run.id}>{run.title}</option>)}
+        </select>
         <KahootStatusBadge status={curStatus} />
       </div>
 
       {/* Workflow stepper — numbered circles */}
+      {kahootMessage && (
+        <div style={{ padding: "10px 12px", borderRadius: 8, background: "#FEF3C7", border: "1px solid #92400E33", color: "#78350F", fontSize: 13 }}>
+          {kahootMessage}
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 20px" }}>
         {STEPS.map((step, idx) => {
           const active = idx === curStepIdx;
@@ -2193,6 +2385,20 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
       </div>
 
       {/* Tabs */}
+      <form onSubmit={createRun} style={{ display: "grid", gridTemplateColumns: "minmax(180px, 1fr) minmax(180px, 1fr) auto", gap: 10, alignItems: "end", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+        <div>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>New Kahoot section</label>
+          <input value={newRunTitle} onChange={event => setNewRunTitle(event.target.value)} placeholder="Opening recap, Activity 1 quiz..." style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Lesson section</label>
+          <input value={newRunLabel} onChange={event => setNewRunLabel(event.target.value)} placeholder="Optional presenter note" style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+        </div>
+        <button type="submit" disabled={!newRunTitle.trim()} style={newRunTitle.trim() ? { ...BtnPrimary, width: "auto" } : { ...BtnDisabled, width: "auto" }}>
+          <Plus size={14} /> Create
+        </button>
+      </form>
+
       <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
         <button style={T(tab === "questions")} onClick={() => setTab("questions")}>Questions</button>
         <button style={T(tab === "setup")}     onClick={() => setTab("setup")}>Kahoot Setup</button>
@@ -2206,7 +2412,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <p style={{ fontWeight: 700, fontSize: 14, color: "var(--foreground)", margin: 0 }}>
-                {sessionQuestions.length} questions drafted
+                {selectedRun ? `${selectedRunQuestions.length} questions in ${selectedRun.title}` : `${sessionQuestions.length} session questions`}
               </p>
               <button onClick={() => { setWorkspaceTab("questions"); setScreen("scoring"); }} style={{ padding: "5px 12px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
                 <Plus size={12} /> Add in Session
@@ -2214,12 +2420,12 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
             </div>
             {questionsLoading && <div style={{ padding: 14, borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)", fontSize: 13 }}>Loading session questions...</div>}
             {questionsError && <div style={{ padding: 14, borderRadius: 8, background: "#FEF3C7", color: "#78350F", fontSize: 13 }}>{questionsError}</div>}
-            {!questionsLoading && sessionQuestions.length === 0 && (
+            {!questionsLoading && selectedRunQuestions.length === 0 && (
               <div style={{ padding: 18, borderRadius: 8, background: "var(--card)", border: "1px dashed var(--border)", color: "var(--muted-foreground)", fontSize: 13 }}>
-                No questions saved for this session yet. Use Session Workspace - Questions to add them.
+                No questions are assigned to this Kahoot section yet. Use Session Workspace - Questions and choose this section in the question form.
               </div>
             )}
-            {sessionQuestions.map((q, i) => (
+            {selectedRunQuestions.map((q, i) => (
               <div key={q.id} style={{ padding: "11px 14px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <span style={{ fontFamily: "monospace", fontSize: 12, color: "var(--muted-foreground)", width: 18, paddingTop: 1, flexShrink: 0 }}>{i + 1}.</span>
                 <div style={{ flex: 1 }}>
@@ -2266,17 +2472,20 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
             </div>
             <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
               <button
-                onClick={() => downloadSessionQuestionsCsv(selectedSession, sessionQuestions)}
-                style={sessionQuestions.length ? BtnPrimary : BtnDisabled}
-                disabled={!sessionQuestions.length}
+                onClick={() => selectedRun && downloadSessionQuestionsCsv(selectedSession, selectedRunQuestions, selectedRun.title)}
+                style={selectedRun && selectedRunQuestions.length ? BtnPrimary : BtnDisabled}
+                disabled={!selectedRun || !selectedRunQuestions.length}
               >
-                <Download size={15} /> Download CSV for Kahoot
+                <Download size={15} /> Download Section CSV
               </button>
-              {!sessionQuestions.length && (
+              {(!selectedRun || !selectedRunQuestions.length) && (
                 <p style={{ fontSize: 11, color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>
-                  No questions are saved for this session yet. Add questions in the Session Workspace first.
+                  Create a Kahoot section and assign questions to it before exporting.
                 </p>
               )}
+              <button onClick={() => saveRunLinks("exported")} disabled={!selectedRun} style={selectedRun ? BtnSecondary : BtnDisabled}>
+                <Check size={14} /> Mark Exported
+              </button>
               <p style={{ fontSize: 11, color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>
                 The export is tied to Session {selectedSession?.num ?? ""}. If you create multiple Kahoots during one workshop, each exported file still belongs to this session record.
               </p>
@@ -2292,6 +2501,11 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
               </p>
             </div>
             <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <input value={linkForm.kahootUrl} onChange={event => setLinkForm(prev => ({ ...prev, kahootUrl: event.target.value }))} placeholder="Kahoot quiz or host link" style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+              <input value={linkForm.reportUrl} onChange={event => setLinkForm(prev => ({ ...prev, reportUrl: event.target.value }))} placeholder="Kahoot report/results link" style={{ border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+              <button onClick={() => saveRunLinks()} disabled={!selectedRun} style={selectedRun ? BtnPrimary : BtnDisabled}>
+                <Save size={13} /> Save Kahoot Links
+              </button>
               <button onClick={() => window.open("https://create.kahoot.it/creator", "_blank", "noopener,noreferrer")} style={BtnSecondary}>
                 <ExternalLink size={13} /> Open Kahoot Creator
               </button>
@@ -2331,8 +2545,11 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                       Go Live
                     </button>
                   </div>
-                  <button onClick={() => window.open("https://kahoot.com", "_blank", "noopener,noreferrer")} style={BtnSecondary}>
+                  <button onClick={() => window.open(selectedRun?.kahoot_url || "https://kahoot.com", "_blank", "noopener,noreferrer")} style={BtnSecondary}>
                     <ExternalLink size={13} /> Open Kahoot Host Page
+                  </button>
+                  <button onClick={() => saveRunLinks("hosted")} disabled={!selectedRun} style={selectedRun ? BtnSecondary : BtnDisabled}>
+                    <Check size={13} /> Mark Hosted
                   </button>
                 </div>
               )}
@@ -2404,17 +2621,18 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
               <p style={{ fontWeight: 700, fontSize: 13, color: "var(--foreground)", margin: 0 }}>Retrieve Kahoot Results</p>
-              <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>Future adapter: call Kahoot reports/results endpoints using the quiz or report identifier saved for this session.</p>
+              <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>Future adapter: call Kahoot reports/results endpoints using the report link saved for this Kahoot section.</p>
               <button style={BtnDisabled} disabled>
                 <RefreshCw size={14} /> API Retrieval Not Configured
               </button>
-              <p style={{ fontSize: 11, color: "var(--muted-foreground)", margin: 0 }}>For now, export the Kahoot report and import it here once the parser is added.</p>
+              <p style={{ fontSize: 11, color: "var(--muted-foreground)", margin: 0 }}>For now, paste result rows manually below. The backend matching/apply logic is already the same path the API adapter will use.</p>
             </div>
             <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <p style={{ fontWeight: 700, fontSize: 13, color: "var(--foreground)", margin: 0 }}>Import Results File</p>
-              <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>Upload a results spreadsheet exported from Kahoot.</p>
-              <button style={BtnSecondary}>
-                <FileText size={13} /> Choose File to Import
+              <p style={{ fontWeight: 700, fontSize: 13, color: "var(--foreground)", margin: 0 }}>Import Result Rows</p>
+              <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0, lineHeight: 1.5 }}>Paste rows as: identifier,nickname,correct,total,kahoot_points</p>
+              <textarea value={importText} onChange={event => setImportText(event.target.value)} rows={5} placeholder={"AishaK,AishaK,4,5,8200\nSTU-002,FatimaN,5,5,9400"} style={{ border: "1px solid var(--border)", borderRadius: 7, padding: 10, background: "var(--background)", color: "var(--foreground)", fontFamily: "monospace", fontSize: 12, resize: "vertical" }} />
+              <button onClick={importResults} disabled={!selectedRun || !importText.trim()} style={selectedRun && importText.trim() ? BtnSecondary : BtnDisabled}>
+                <FileText size={13} /> Import Results
               </button>
             </div>
           </div>
@@ -2442,9 +2660,9 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                   <tbody>
                     {importedResults.map((r, i) => {
                       const stu       = r.studentId ? students.find(s => s.id === r.studentId) : null;
-                      const isUnmatched = r.matchStatus === "review";
+                      const isUnmatched = r.matchStatus !== "matched";
                       return (
-                        <tr key={r.nickname} style={{ borderBottom: "1px solid var(--border)", background: isUnmatched ? "rgba(234,179,8,0.04)" : i % 2 === 0 ? "transparent" : "rgba(0,0,0,0.015)" }}>
+                        <tr key={r.id} style={{ borderBottom: "1px solid var(--border)", background: isUnmatched ? "rgba(234,179,8,0.04)" : i % 2 === 0 ? "transparent" : "rgba(0,0,0,0.015)" }}>
                           <td style={{ ...TD, fontFamily: "monospace", fontWeight: 600 }}>{r.nickname}</td>
                           <td style={{ ...TD, fontFamily: "monospace", fontSize: 11, color: "var(--muted-foreground)" }}>{r.identifier || "—"}</td>
                           <td style={TD}>
@@ -2452,11 +2670,16 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                               ? <div style={{ display: "flex", alignItems: "center", gap: 7 }}><PixelAvatar avatarId={stu.avatarId} size={20} /><span style={{ fontWeight: 500 }}>{stu.name}</span></div>
                               : <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                   <span style={{ color: "#f59e0b", fontSize: 11 }}>Unmatched</span>
-                                  <select value={manualAssign[r.nickname] ?? ""} onChange={e => setManualAssign(p => ({ ...p, [r.nickname]: e.target.value }))}
+                                  <select value={manualAssign[String(r.id)] ?? ""} onChange={e => setManualAssign(p => ({ ...p, [String(r.id)]: e.target.value }))}
                                     style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", fontSize: 11 }}>
                                     <option value="">Assign to student…</option>
                                     {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
                                   </select>
+                                  {manualAssign[String(r.id)] && (
+                                    <button onClick={() => saveResultMatch(r.id, manualAssign[String(r.id)])} style={{ padding: "4px 10px", fontSize: 11, fontWeight: 600, borderRadius: 5, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer" }}>
+                                      Save
+                                    </button>
+                                  )}
                                 </div>
                             }
                           </td>
@@ -2480,10 +2703,10 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                 <div style={{ flex: 1 }}>
                   <p style={{ fontWeight: 700, fontSize: 13, color: "var(--foreground)", margin: "0 0 2px" }}>Apply Reviewed Scores to Leaderboard</p>
                   <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0 }}>
-                    Scores are added to each matched student&apos;s session grade. Unmatched entries are skipped unless manually assigned.
+                    Scores are added to each matched student&apos;s session grade. Resolve unmatched entries before applying.
                   </p>
                 </div>
-                <button style={{ ...BtnPrimary, width: "auto", padding: "10px 20px", flexShrink: 0 }}>
+                <button onClick={applyImportedResults} disabled={unmatched.length > 0 || importedResults.length === 0} style={{ ...(unmatched.length > 0 || importedResults.length === 0 ? BtnDisabled : BtnPrimary), width: "auto", padding: "10px 20px", flexShrink: 0 }}>
                   <Check size={14} /> Apply Scores
                 </button>
               </div>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, time
+import json
+from datetime import date, datetime, time
 from typing import Optional
 
 from flask import Flask, current_app, jsonify, request, session
@@ -9,8 +10,8 @@ from werkzeug.security import check_password_hash
 
 from extensions import db
 from extensions import limiter
-from models import Cohort, ScoreEntry, SessionQuestion, Student, WorkshopSession
-from services.scoring import apply_rubric_payload, compute_leaderboard
+from models import Cohort, KahootResult, KahootRun, ScoreEntry, SessionQuestion, Student, WorkshopSession
+from services.scoring import apply_rubric_payload, compute_leaderboard, compute_rubric_points
 from services.students import student_code
 
 
@@ -296,9 +297,17 @@ def register_api_routes(app: Flask) -> None:
         if correct_option not in ["A", "B", "C", "D"][: len(options)]:
             return jsonify({"error": "Correct option must match one of the provided options."}), 400
 
+        kahoot_run_id = _safe_int(payload.get("kahoot_run_id"), default=0, minimum=0, maximum=999999)
+        kahoot_run = None
+        if kahoot_run_id:
+            kahoot_run = db.session.get(KahootRun, kahoot_run_id)
+            if not kahoot_run or kahoot_run.workshop_session_id != workshop_session.id:
+                return jsonify({"error": "Kahoot section must belong to this session."}), 400
+
         position = (db.session.query(db.func.max(SessionQuestion.position)).filter_by(workshop_session_id=session_id).scalar() or 0) + 1
         question = SessionQuestion(
             workshop_session_id=workshop_session.id,
+            kahoot_run_id=kahoot_run.id if kahoot_run else None,
             position=position,
             prompt=prompt,
             option_a=options[0],
@@ -310,9 +319,218 @@ def register_api_routes(app: Flask) -> None:
             points=_safe_int(payload.get("points"), default=1000, minimum=0, maximum=2000),
         )
         db.session.add(question)
+        workshop_session.kahoot_status = "questions-ready"
         db.session.commit()
 
         return jsonify({"question": _question_payload(question)}), 201
+
+    @app.get("/api/sessions/<int:session_id>/kahoot-runs")
+    def api_kahoot_runs(session_id: int):
+        workshop_session = db.session.get(WorkshopSession, session_id)
+        if not workshop_session:
+            return jsonify({"error": "Session not found."}), 404
+
+        runs = KahootRun.query.filter_by(workshop_session_id=session_id).order_by(KahootRun.id.asc()).all()
+        return jsonify({"kahoot_runs": [_kahoot_run_payload(run) for run in runs]})
+
+    @app.post("/api/sessions/<int:session_id>/kahoot-runs")
+    def api_create_kahoot_run(session_id: int):
+        auth_error = _require_admin()
+        if auth_error:
+            return auth_error
+
+        workshop_session = db.session.get(WorkshopSession, session_id)
+        if not workshop_session:
+            return jsonify({"error": "Session not found."}), 404
+
+        payload = request.get_json(silent=True) or {}
+        title = str(payload.get("title", "")).strip()
+        if not title:
+            return jsonify({"error": "Kahoot section title is required."}), 400
+
+        run = KahootRun(
+            workshop_session_id=workshop_session.id,
+            title=title,
+            section_label=str(payload.get("section_label", "")).strip() or None,
+            notes=str(payload.get("notes", "")).strip(),
+            status="draft",
+        )
+        db.session.add(run)
+        db.session.commit()
+        return jsonify({"kahoot_run": _kahoot_run_payload(run)}), 201
+
+    @app.patch("/api/kahoot-runs/<int:run_id>")
+    def api_update_kahoot_run(run_id: int):
+        auth_error = _require_admin()
+        if auth_error:
+            return auth_error
+
+        run = db.session.get(KahootRun, run_id)
+        if not run:
+            return jsonify({"error": "Kahoot section not found."}), 404
+
+        payload = request.get_json(silent=True) or {}
+        if "title" in payload:
+            title = str(payload.get("title", "")).strip()
+            if not title:
+                return jsonify({"error": "Kahoot section title cannot be empty."}), 400
+            run.title = title
+        if "section_label" in payload:
+            run.section_label = str(payload.get("section_label", "")).strip() or None
+        if "kahoot_url" in payload:
+            run.kahoot_url = str(payload.get("kahoot_url", "")).strip() or None
+        if "report_url" in payload:
+            run.report_url = str(payload.get("report_url", "")).strip() or None
+        if "notes" in payload:
+            run.notes = str(payload.get("notes", "")).strip()
+        if "status" in payload:
+            status = str(payload.get("status", "")).strip()
+            if status not in ["draft", "exported", "hosted", "results-imported", "reviewed", "applied"]:
+                return jsonify({"error": "Unsupported Kahoot status."}), 400
+            run.status = status
+            _stamp_kahoot_run_status(run, status)
+
+        _update_session_kahoot_status(run.workshop_session)
+        db.session.commit()
+        return jsonify({"kahoot_run": _kahoot_run_payload(run)})
+
+    @app.get("/api/kahoot-runs/<int:run_id>/results")
+    def api_kahoot_results(run_id: int):
+        run = db.session.get(KahootRun, run_id)
+        if not run:
+            return jsonify({"error": "Kahoot section not found."}), 404
+
+        results = KahootResult.query.filter_by(kahoot_run_id=run.id).order_by(KahootResult.kahoot_points.desc()).all()
+        return jsonify({"results": [_kahoot_result_payload(result) for result in results]})
+
+    @app.post("/api/kahoot-runs/<int:run_id>/results")
+    def api_import_kahoot_results(run_id: int):
+        auth_error = _require_admin()
+        if auth_error:
+            return auth_error
+
+        run = db.session.get(KahootRun, run_id)
+        if not run:
+            return jsonify({"error": "Kahoot section not found."}), 404
+
+        payload = request.get_json(silent=True) or {}
+        rows = payload.get("results", [])
+        if not isinstance(rows, list):
+            return jsonify({"error": "Results must be a list."}), 400
+
+        KahootResult.query.filter_by(kahoot_run_id=run.id).delete()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+
+            nickname = str(row.get("nickname") or row.get("name") or "").strip()
+            identifier = str(row.get("identifier") or row.get("player_identifier") or nickname).strip()
+            if not nickname and identifier:
+                nickname = identifier
+            if not nickname:
+                continue
+
+            correct_count = _safe_int(row.get("correct_count") or row.get("correct"), default=0, minimum=0, maximum=999)
+            total_questions = _safe_int(row.get("total_questions") or row.get("total"), default=0, minimum=0, maximum=999)
+            kahoot_points = _safe_int(row.get("kahoot_points") or row.get("points") or row.get("score"), default=0, minimum=0, maximum=999999)
+            matched_student = _match_kahoot_student(run.workshop_session, identifier, nickname)
+            awarded_points = _awarded_points_for_result(run, correct_count, total_questions, kahoot_points)
+
+            db.session.add(KahootResult(
+                kahoot_run_id=run.id,
+                student_id=matched_student.id if matched_student else None,
+                nickname=nickname,
+                identifier=identifier or None,
+                correct_count=correct_count,
+                total_questions=total_questions,
+                kahoot_points=kahoot_points,
+                awarded_points=awarded_points,
+                match_status="matched" if matched_student else "review",
+                raw_payload=json.dumps(row, ensure_ascii=True),
+                applied=False,
+            ))
+
+        run.status = "results-imported"
+        run.results_imported_at = datetime.utcnow()
+        _update_session_kahoot_status(run.workshop_session)
+        db.session.commit()
+
+        results = KahootResult.query.filter_by(kahoot_run_id=run.id).order_by(KahootResult.kahoot_points.desc()).all()
+        return jsonify({
+            "kahoot_run": _kahoot_run_payload(run),
+            "results": [_kahoot_result_payload(result) for result in results],
+        })
+
+    @app.patch("/api/kahoot-results/<int:result_id>")
+    def api_update_kahoot_result(result_id: int):
+        auth_error = _require_admin()
+        if auth_error:
+            return auth_error
+
+        result = db.session.get(KahootResult, result_id)
+        if not result:
+            return jsonify({"error": "Kahoot result not found."}), 404
+        if result.applied:
+            return jsonify({"error": "Applied results cannot be edited."}), 400
+
+        payload = request.get_json(silent=True) or {}
+        if "student_id" in payload:
+            student_id = _safe_int(payload.get("student_id"), default=0, minimum=0, maximum=999999)
+            student = db.session.get(Student, student_id) if student_id else None
+            if student and student.cohort_id != result.kahoot_run.workshop_session.cohort_id:
+                return jsonify({"error": "Student must belong to the same cohort as the session."}), 400
+            result.student_id = student.id if student else None
+            result.match_status = "matched" if student else "review"
+        if "awarded_points" in payload:
+            result.awarded_points = _safe_int(payload.get("awarded_points"), default=result.awarded_points or 0, minimum=0, maximum=20000)
+
+        db.session.commit()
+        return jsonify({"result": _kahoot_result_payload(result)})
+
+    @app.post("/api/kahoot-runs/<int:run_id>/apply-results")
+    def api_apply_kahoot_results(run_id: int):
+        auth_error = _require_admin()
+        if auth_error:
+            return auth_error
+
+        run = db.session.get(KahootRun, run_id)
+        if not run:
+            return jsonify({"error": "Kahoot section not found."}), 404
+
+        _ensure_score_entries(run.workshop_session)
+        unapplied_results = KahootResult.query.filter_by(kahoot_run_id=run.id, applied=False).all()
+        applied_count = 0
+
+        for result in unapplied_results:
+            if not result.student_id:
+                continue
+            entry = ScoreEntry.query.filter_by(
+                student_id=result.student_id,
+                workshop_session_id=run.workshop_session_id,
+            ).first()
+            if not entry:
+                continue
+
+            entry.present = True
+            entry.kahoot_points = int(entry.kahoot_points or 0) + int(result.awarded_points or 0)
+            entry.base_points = compute_rubric_points(entry)
+            result.applied = True
+            applied_count += 1
+
+        run.status = "applied"
+        run.applied_at = datetime.utcnow()
+        if run.workshop_session.status == "draft":
+            run.workshop_session.status = "review"
+        _update_session_kahoot_status(run.workshop_session)
+        db.session.commit()
+
+        results = KahootResult.query.filter_by(kahoot_run_id=run.id).order_by(KahootResult.kahoot_points.desc()).all()
+        return jsonify({
+            "applied_count": applied_count,
+            "kahoot_run": _kahoot_run_payload(run),
+            "results": [_kahoot_result_payload(result) for result in results],
+            "session": _session_payload(run.workshop_session),
+        })
 
     @app.get("/api/leaderboard")
     def api_leaderboard():
@@ -374,6 +592,7 @@ def _question_payload(question: SessionQuestion) -> dict:
     return {
         "id": question.id,
         "session_id": question.workshop_session_id,
+        "kahoot_run_id": question.kahoot_run_id,
         "position": question.position,
         "prompt": question.prompt,
         "options": options,
@@ -381,6 +600,48 @@ def _question_payload(question: SessionQuestion) -> dict:
         "time_limit_seconds": question.time_limit_seconds,
         "points": question.points,
         "kahoot_question_id": question.kahoot_question_id,
+    }
+
+
+def _kahoot_run_payload(run: KahootRun) -> dict:
+    question_count = SessionQuestion.query.filter_by(kahoot_run_id=run.id).count()
+    result_count = KahootResult.query.filter_by(kahoot_run_id=run.id).count()
+    matched_count = KahootResult.query.filter_by(kahoot_run_id=run.id, match_status="matched").count()
+
+    return {
+        "id": run.id,
+        "session_id": run.workshop_session_id,
+        "title": run.title,
+        "section_label": run.section_label,
+        "status": run.status,
+        "kahoot_url": run.kahoot_url,
+        "report_url": run.report_url,
+        "notes": run.notes or "",
+        "exported_at": run.exported_at.isoformat() if run.exported_at else None,
+        "hosted_at": run.hosted_at.isoformat() if run.hosted_at else None,
+        "results_imported_at": run.results_imported_at.isoformat() if run.results_imported_at else None,
+        "applied_at": run.applied_at.isoformat() if run.applied_at else None,
+        "question_count": question_count,
+        "result_count": result_count,
+        "matched_count": matched_count,
+    }
+
+
+def _kahoot_result_payload(result: KahootResult) -> dict:
+    return {
+        "id": result.id,
+        "kahoot_run_id": result.kahoot_run_id,
+        "student_id": result.student_id,
+        "student_code": student_code(result.student_id) if result.student_id else None,
+        "student_name": result.student.name if result.student else None,
+        "nickname": result.nickname,
+        "identifier": result.identifier,
+        "correct_count": int(result.correct_count or 0),
+        "total_questions": int(result.total_questions or 0),
+        "kahoot_points": int(result.kahoot_points or 0),
+        "awarded_points": int(result.awarded_points or 0),
+        "match_status": result.match_status,
+        "applied": bool(result.applied),
     }
 
 
@@ -414,6 +675,70 @@ def _ensure_score_entries(workshop_session: WorkshopSession) -> None:
     for student in Student.query.filter_by(cohort_id=workshop_session.cohort_id).all():
         if student.id not in existing_student_ids:
             db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
+
+
+def _stamp_kahoot_run_status(run: KahootRun, status: str) -> None:
+    now = datetime.utcnow()
+    if status == "exported" and not run.exported_at:
+        run.exported_at = now
+    elif status == "hosted" and not run.hosted_at:
+        run.hosted_at = now
+    elif status == "results-imported" and not run.results_imported_at:
+        run.results_imported_at = now
+    elif status in ["reviewed", "applied"] and not run.applied_at:
+        run.applied_at = now
+
+
+def _update_session_kahoot_status(workshop_session: WorkshopSession) -> None:
+    runs = KahootRun.query.filter_by(workshop_session_id=workshop_session.id).all()
+    statuses = {run.status for run in runs}
+    if "applied" in statuses or "reviewed" in statuses:
+        workshop_session.kahoot_status = "reviewed"
+    elif "results-imported" in statuses:
+        workshop_session.kahoot_status = "results-imported"
+    elif "hosted" in statuses:
+        workshop_session.kahoot_status = "hosted"
+    elif "exported" in statuses:
+        workshop_session.kahoot_status = "exported"
+    else:
+        workshop_session.kahoot_status = "questions-ready"
+
+
+def _match_kahoot_student(workshop_session: WorkshopSession, identifier: str, nickname: str) -> Optional[Student]:
+    if not workshop_session.cohort_id:
+        return None
+
+    candidates = [_normalize_identifier(identifier), _normalize_identifier(nickname)]
+    candidates = [candidate for candidate in candidates if candidate]
+    if not candidates:
+        return None
+
+    students = Student.query.filter_by(cohort_id=workshop_session.cohort_id).all()
+    for student in students:
+        student_identifiers = {
+            _normalize_identifier(student.kahoot_identifier or ""),
+            _normalize_identifier(student_code(student.id)),
+        }
+        if any(candidate in student_identifiers for candidate in candidates):
+            return student
+
+    return None
+
+
+def _normalize_identifier(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def _awarded_points_for_result(run: KahootRun, correct_count: int, total_questions: int, kahoot_points: int) -> int:
+    question_points = [
+        int(question.points or 0)
+        for question in SessionQuestion.query.filter_by(kahoot_run_id=run.id).all()
+    ]
+    possible_points = sum(question_points)
+    if possible_points and total_questions > 0:
+        return round((correct_count / total_questions) * possible_points)
+
+    return min(kahoot_points, 20000)
 
 
 def _optional_int_query(name: str) -> Optional[int]:

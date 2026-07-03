@@ -48,6 +48,7 @@ export interface ApiScoreEntry {
 export interface ApiSessionQuestion {
   id: number;
   session_id: number;
+  kahoot_run_id: number | null;
   position: number;
   prompt: string;
   options: string[];
@@ -55,6 +56,40 @@ export interface ApiSessionQuestion {
   time_limit_seconds: number;
   points: number;
   kahoot_question_id: string | null;
+}
+
+export interface ApiKahootRun {
+  id: number;
+  session_id: number;
+  title: string;
+  section_label: string | null;
+  status: "draft" | "exported" | "hosted" | "results-imported" | "reviewed" | "applied";
+  kahoot_url: string | null;
+  report_url: string | null;
+  notes: string;
+  exported_at: string | null;
+  hosted_at: string | null;
+  results_imported_at: string | null;
+  applied_at: string | null;
+  question_count: number;
+  result_count: number;
+  matched_count: number;
+}
+
+export interface ApiKahootResult {
+  id: number;
+  kahoot_run_id: number;
+  student_id: number | null;
+  student_code: string | null;
+  student_name: string | null;
+  nickname: string;
+  identifier: string | null;
+  correct_count: number;
+  total_questions: number;
+  kahoot_points: number;
+  awarded_points: number;
+  match_status: "matched" | "unmatched" | "review";
+  applied: boolean;
 }
 
 export interface ApiLeaderboardRow {
@@ -264,8 +299,69 @@ export async function createSessionQuestion(
     correct_option: "A" | "B" | "C" | "D";
     time_limit_seconds: number;
     points: number;
+    kahoot_run_id?: number | null;
   },
 ): Promise<ApiSessionQuestion> {
   const data = await postJson<{ question: ApiSessionQuestion }>(`/api/sessions/${sessionId}/questions`, payload);
   return data.question;
+}
+
+export async function fetchKahootRuns(sessionId: number): Promise<ApiKahootRun[]> {
+  const data = await fetchJson<{ kahoot_runs: ApiKahootRun[] }>(`/api/sessions/${sessionId}/kahoot-runs`);
+  return data.kahoot_runs;
+}
+
+export async function createKahootRun(
+  sessionId: number,
+  payload: {
+    title: string;
+    section_label?: string;
+    notes?: string;
+  },
+): Promise<ApiKahootRun> {
+  const data = await postJson<{ kahoot_run: ApiKahootRun }>(`/api/sessions/${sessionId}/kahoot-runs`, payload);
+  return data.kahoot_run;
+}
+
+export async function updateKahootRun(
+  runId: number,
+  payload: Partial<Pick<ApiKahootRun, "title" | "section_label" | "status" | "kahoot_url" | "report_url" | "notes">>,
+): Promise<ApiKahootRun> {
+  const data = await patchJson<{ kahoot_run: ApiKahootRun }>(`/api/kahoot-runs/${runId}`, payload);
+  return data.kahoot_run;
+}
+
+export async function fetchKahootResults(runId: number): Promise<ApiKahootResult[]> {
+  const data = await fetchJson<{ results: ApiKahootResult[] }>(`/api/kahoot-runs/${runId}/results`);
+  return data.results;
+}
+
+export async function importKahootResults(
+  runId: number,
+  results: Array<{
+    nickname: string;
+    identifier?: string;
+    correct_count?: number;
+    total_questions?: number;
+    kahoot_points?: number;
+  }>,
+): Promise<{ kahoot_run: ApiKahootRun; results: ApiKahootResult[] }> {
+  return postJson<{ kahoot_run: ApiKahootRun; results: ApiKahootResult[] }>(`/api/kahoot-runs/${runId}/results`, { results });
+}
+
+export async function updateKahootResult(
+  resultId: number,
+  payload: {
+    student_id?: number | null;
+    awarded_points?: number;
+  },
+): Promise<ApiKahootResult> {
+  const data = await patchJson<{ result: ApiKahootResult }>(`/api/kahoot-results/${resultId}`, payload);
+  return data.result;
+}
+
+export async function applyKahootResults(
+  runId: number,
+): Promise<{ applied_count: number; kahoot_run: ApiKahootRun; results: ApiKahootResult[]; session: ApiSession }> {
+  return postJson<{ applied_count: number; kahoot_run: ApiKahootRun; results: ApiKahootResult[]; session: ApiSession }>(`/api/kahoot-runs/${runId}/apply-results`);
 }

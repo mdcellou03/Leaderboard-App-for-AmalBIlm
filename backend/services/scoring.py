@@ -10,6 +10,7 @@ from services.students import student_code
 MAX_PARTICIPATION_SCORE = 10
 MAX_TEAMWORK_SCORE = 10
 MAX_CONDUCT_SCORE = 10
+MAX_SESSION_KAHOOT_POINTS = 20000
 
 ATTENDANCE_POINTS = 20
 PUNCTUALITY_POINTS = 10
@@ -100,7 +101,7 @@ def apply_rubric_payload(entry: ScoreEntry, payload: dict) -> ScoreEntry:
     entry.present = bool(payload.get("present", False))
     entry.punctual = bool(payload.get("punctual", False))
     entry.deliverable = bool(payload.get("deliverable", False))
-    entry.kahoot_points = clamp_int(payload.get("kahoot_points"), 0, 2000)
+    entry.kahoot_points = clamp_int(payload.get("kahoot_points"), 0, MAX_SESSION_KAHOOT_POINTS)
     entry.participation_score = clamp_int(payload.get("participation_score"), 0, MAX_PARTICIPATION_SCORE)
     entry.teamwork_score = clamp_int(payload.get("teamwork_score"), 0, MAX_TEAMWORK_SCORE)
     entry.conduct_score = clamp_int(payload.get("conduct_score"), 0, MAX_CONDUCT_SCORE)

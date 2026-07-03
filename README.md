@@ -1,45 +1,96 @@
 # Amal B'Ilm Leaderboard App
 
-Full-stack workshop leaderboard for Amal B'Ilm. The product is built for staff
-to manage cohorts, students, sessions, scoring, Kahoot-assisted engagement, and
-TV-friendly leaderboard displays during youth workshop programming.
+Full-stack leaderboard and workshop operations app for Amal B'Ilm. Staff use it
+to manage cohorts, students, workshop sessions, scoring, Kahoot-assisted quiz
+handoffs, result review, and public/TV leaderboard display.
 
-## Product Shape
-
-The app has two source projects:
+## Project Structure
 
 ```text
 backend/                 Flask API, database models, migrations, auth, services
 backend/app.py           Flask application entry point
-backend/routes/          Backend route modules
-backend/services/        Backend business logic helpers
+backend/models.py        SQLAlchemy database tables
+backend/routes/          API and legacy Flask route modules
+backend/services/        Business logic helpers, including scoring
 backend/migrations/      Alembic migration history
-frontend/                React/Vite staff dashboard and TV display UI
-frontend/src/app/        React screens, app state, and API client helpers
-frontend/src/styles/     Frontend theme and global styles
-Docs/                    Local planning notes and meeting artifacts
+
+frontend/                React/Vite staff dashboard and public display
+frontend/src/app/App.tsx Main React app and screens
+frontend/src/app/api.ts  Typed frontend API client
+frontend/src/styles/     Theme and global styles
+
+Docs/                    Meeting notes, workshop source material, planning files
 ```
 
-The repository root is the workspace. Backend commands run from `backend/`.
-Frontend commands run from `frontend/`.
+Run backend commands from `backend/`. Run frontend commands from `frontend/`.
 
-## Current Capabilities
+## Current Product Flow
 
-- Staff login protects the React admin workspace.
-- Backend auth uses Flask sessions, CSRF tokens, `SECRET_KEY`, and either
-  `ADMIN_PASSWORD_HASH` for production or `ADMIN_PASSWORD` for local development.
-- Backend exposes API endpoints for auth, cohorts, students, sessions, and
-  leaderboard reads.
-- React frontend includes dashboard, leaderboard, students, sessions, scoring,
-  Kahoot workflow, reports, and TV display screens.
-- Local data uses SQLite by default. Production should use PostgreSQL through
-  `DATABASE_URL`.
+The app is organized around cohorts and workshop sessions.
 
-## Local Backend Setup
+1. Create or select a cohort.
+2. Add students to that cohort.
+3. Set each student's Kahoot ID when known. If no Kahoot ID is available, the
+   generated student code can be used as the matching identifier.
+4. Create a workshop session for the cohort.
+5. Use the Session Workspace during preparation or while the session is running.
+6. Create one or more Kahoot sections for that session.
+7. Assign questions to the relevant Kahoot section.
+8. Export the selected section's questions for Kahoot.
+9. Host the quiz manually in Kahoot.
+10. Import or retrieve results back into the same Kahoot section.
+11. Review unmatched result rows.
+12. Apply reviewed Kahoot points to the session score sheet.
+13. Publish reviewed scores when ready.
+14. Show the leaderboard through the public view or TV display.
+
+This design keeps the app useful even while the Kahoot integration is still being
+finalized. Kahoot handles the live quiz experience; this app owns the program
+records, matching, scoring, and leaderboard.
+
+## Kahoot Integration Position
+
+The current implementation does not pretend to start a Kahoot game through an
+unsupported endpoint. The working flow is:
+
+- The app stores Kahoot sections under a workshop session.
+- Each section can export its assigned questions.
+- Staff creates and hosts the quiz in Kahoot.
+- Staff stores the Kahoot quiz/report link against the section.
+- Results are imported back into the app and matched to students.
+- Reviewed results are applied to the scoring table.
+
+The result import screen currently accepts pasted rows in this format:
+
+```text
+identifier,nickname,correct,total,kahoot_points
+STU-001,AishaK,4,5,8200
+```
+
+The future Kahoot API adapter should feed the same backend result-import endpoint
+instead of inventing a separate scoring path. That keeps manual import and API
+retrieval consistent.
+
+## Tech Stack
+
+| Area | Tool |
+|---|---|
+| Backend | Flask |
+| ORM | Flask-SQLAlchemy |
+| Migrations | Flask-Migrate / Alembic |
+| Local database | SQLite |
+| Production database target | PostgreSQL |
+| Backend package manager | uv |
+| Frontend | React / Vite |
+| Frontend package manager | npm |
+| Icons | lucide-react |
+
+## Local Setup
 
 Copy `.env.example` to `.env` in the repository root.
 
-For local development, use the simpler password option:
+For local development, use `ADMIN_PASSWORD`. This is simpler than generating a
+hash while building and demoing locally.
 
 ```env
 SECRET_KEY=replace-with-a-generated-secret
@@ -54,14 +105,16 @@ Generate a `SECRET_KEY`:
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Production should not use `ADMIN_PASSWORD`. Generate and set
-`ADMIN_PASSWORD_HASH` instead:
+Production should not use `ADMIN_PASSWORD`. Use `ADMIN_PASSWORD_HASH` instead:
 
 ```powershell
 python -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('your-password', method='pbkdf2:sha256'))"
 ```
 
-Preferred backend workflow with `uv`:
+Werkzeug password hashes are salted, so the generated hash will be different
+each time. That is expected.
+
+## Run The Backend
 
 ```powershell
 cd backend
@@ -70,8 +123,14 @@ uv run flask --app app db upgrade
 uv run flask --app app run
 ```
 
-If PowerShell says `uv` is not recognized, uv is not installed globally or is
-not on PATH. From this repository, you can use the local executable instead:
+The backend runs at:
+
+```text
+http://127.0.0.1:5000
+```
+
+If `uv` is not recognized, install it globally or use the local executable if it
+exists:
 
 ```powershell
 cd backend
@@ -80,24 +139,7 @@ cd backend
 ..\.venv\Scripts\uv.exe run flask --app app run
 ```
 
-Fallback backend workflow with `venv` and `pip`:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r backend/requirements.txt
-cd backend
-flask --app app db upgrade
-flask --app app run
-```
-
-The backend runs at:
-
-```text
-http://127.0.0.1:5000
-```
-
-## Local Frontend Setup
+## Run The Frontend
 
 ```powershell
 cd frontend
@@ -111,72 +153,80 @@ The frontend usually runs at:
 http://localhost:5173
 ```
 
-During development, Vite proxies `/api` requests to
-`http://127.0.0.1:5000`.
+Vite proxies `/api` requests to `http://127.0.0.1:5000`.
 
 Build the frontend:
 
 ```powershell
+cd frontend
 npm run build
 ```
 
-## API Surface
-
-Current API endpoints:
+## Main API Areas
 
 ```text
 GET  /api/health
+
 GET  /api/auth/csrf
 GET  /api/auth/me
 POST /api/auth/login
 POST /api/auth/logout
+
 GET  /api/cohorts
-GET  /api/students
+POST /api/cohorts
+
+GET    /api/students
+POST   /api/students
+PATCH  /api/students/<student_id>
+DELETE /api/students/<student_id>
+
 GET  /api/sessions
-GET  /api/leaderboard
-GET  /api/leaderboard?cohort_id=1
+POST /api/sessions
+
+GET /api/sessions/<session_id>/scores
+PUT /api/sessions/<session_id>/scores
+
+GET  /api/sessions/<session_id>/questions
+POST /api/sessions/<session_id>/questions
+
+GET   /api/sessions/<session_id>/kahoot-runs
+POST  /api/sessions/<session_id>/kahoot-runs
+PATCH /api/kahoot-runs/<run_id>
+
+GET   /api/kahoot-runs/<run_id>/results
+POST  /api/kahoot-runs/<run_id>/results
+PATCH /api/kahoot-results/<result_id>
+POST  /api/kahoot-runs/<run_id>/apply-results
+
+GET /api/leaderboard
+GET /api/leaderboard?cohort_id=<cohort_id>
 ```
 
-Upcoming API work should add authenticated write endpoints for students,
-sessions, scoring, and Kahoot workflow state.
+Authenticated write endpoints require staff login and CSRF protection.
 
-## Kahoot Direction
+## Where To Change Core Logic
 
-The intended session workflow is not bulk quiz upload. Presenters may send a few
-short engagement questions during the workshop, launch Kahoot from the session
-workspace, and retrieve results after the activity.
+- Scoring rules live in `backend/services/scoring.py`.
+- Student display codes live in `backend/services/students.py`.
+- Database shape lives in `backend/models.py`.
+- API behavior lives in `backend/routes/api.py`.
+- Frontend API calls live in `frontend/src/app/api.ts`.
+- Staff UI screens currently live in `frontend/src/app/App.tsx`.
 
-The app should be designed around a Kahoot adapter:
+The frontend should eventually be split into smaller screen components, but the
+current single-file structure is still workable while the product flow is moving.
 
-- Preferred path: official/commercial Kahoot access creates/updates the quiz,
-  returns a launch URL, and provides result retrieval.
-- Fallback path: the app prepares questions/results for manual import/export if
-  the official API does not support the desired automation.
+## Current Limitations
 
-Do not couple core scoring to an unofficial browser automation approach. The
-leaderboard should remain usable even if Kahoot integration is unavailable.
-
-## Next Build Priorities
-
-1. Add cohort ownership to students so filtering is database-accurate.
-2. Add authenticated CRUD APIs for students and connect the Students screen.
-3. Add authenticated CRUD APIs for sessions and connect the Sessions screen.
-4. Add scoring persistence, review, and publish workflow.
-5. Define the Kahoot adapter contract and implement the best available provider.
-6. Add deployment configuration, production database setup, and tests.
-
-## Tech Stack
-
-| Area | Tool |
-|---|---|
-| Backend | Flask |
-| ORM | Flask-SQLAlchemy |
-| Migrations | Flask-Migrate / Alembic |
-| Local database | SQLite |
-| Production database target | PostgreSQL |
-| Frontend | React / Vite |
-| Styling | Project CSS theme and component styles |
-| Production server target | gunicorn or platform-managed Python runtime |
+- Kahoot API retrieval is not connected yet. Manual result import uses the same
+  backend path the adapter should call later.
+- File upload parsing for Kahoot reports is not implemented yet.
+- The frontend screens are still concentrated in `App.tsx`; this should be
+  refactored once the workflow stabilizes.
+- Production deployment still needs final platform configuration, a managed
+  PostgreSQL database, persistent rate-limit storage, and proper secret handling.
+- Automated tests should be added around scoring, result matching, and protected
+  write endpoints.
 
 ## License
 

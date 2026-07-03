@@ -66,7 +66,7 @@ def create_app() -> Flask:
     migrate.init_app(app, db, directory=str(BACKEND_ROOT / "migrations"))
     app.jinja_env.globals["student_code"] = student_code
 
-    from models import Cohort, ScoreEntry, Student, WorkshopSession
+    from models import Cohort, KahootResult, KahootRun, ScoreEntry, SessionQuestion, Student, WorkshopSession
     from routes.admin import register_admin_routes
     from routes.api import register_api_routes
     from routes.auth import register_auth_routes

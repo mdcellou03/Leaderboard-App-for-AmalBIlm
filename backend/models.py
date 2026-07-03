@@ -44,6 +44,12 @@ class WorkshopSession(db.Model):
         cascade="all, delete-orphan",
         order_by="SessionQuestion.position",
     )
+    kahoot_runs = db.relationship(
+        "KahootRun",
+        back_populates="workshop_session",
+        cascade="all, delete-orphan",
+        order_by="KahootRun.id",
+    )
 
     def __repr__(self) -> str:
         return f"<WorkshopSession {self.session_date.isoformat()} {self.start_time}>"
@@ -52,6 +58,7 @@ class WorkshopSession(db.Model):
 class SessionQuestion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     workshop_session_id = db.Column(db.Integer, db.ForeignKey("workshop_session.id"), nullable=False)
+    kahoot_run_id = db.Column(db.Integer, db.ForeignKey("kahoot_run.id"), nullable=True)
 
     position = db.Column(db.Integer, nullable=False, default=1)
     prompt = db.Column(db.Text, nullable=False)
@@ -67,6 +74,48 @@ class SessionQuestion(db.Model):
     __table_args__ = (
         db.UniqueConstraint("workshop_session_id", "position", name="uniq_session_question_position"),
     )
+
+
+class KahootRun(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    workshop_session_id = db.Column(db.Integer, db.ForeignKey("workshop_session.id"), nullable=False)
+
+    title = db.Column(db.String(180), nullable=False, default="Kahoot Section")
+    section_label = db.Column(db.String(120), nullable=True)
+    status = db.Column(db.String(40), nullable=False, default="draft")
+    kahoot_url = db.Column(db.String(500), nullable=True)
+    report_url = db.Column(db.String(500), nullable=True)
+    notes = db.Column(db.Text, default="")
+    exported_at = db.Column(db.DateTime, nullable=True)
+    hosted_at = db.Column(db.DateTime, nullable=True)
+    results_imported_at = db.Column(db.DateTime, nullable=True)
+    applied_at = db.Column(db.DateTime, nullable=True)
+
+    workshop_session = db.relationship("WorkshopSession", back_populates="kahoot_runs")
+    questions = db.relationship(
+        "SessionQuestion",
+        backref="kahoot_run",
+        order_by="SessionQuestion.position",
+    )
+    results = db.relationship("KahootResult", backref="kahoot_run", cascade="all, delete-orphan")
+
+
+class KahootResult(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    kahoot_run_id = db.Column(db.Integer, db.ForeignKey("kahoot_run.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("student.id"), nullable=True)
+
+    nickname = db.Column(db.String(180), nullable=False)
+    identifier = db.Column(db.String(180), nullable=True)
+    correct_count = db.Column(db.Integer, nullable=False, default=0)
+    total_questions = db.Column(db.Integer, nullable=False, default=0)
+    kahoot_points = db.Column(db.Integer, nullable=False, default=0)
+    awarded_points = db.Column(db.Integer, nullable=False, default=0)
+    match_status = db.Column(db.String(40), nullable=False, default="unmatched")
+    raw_payload = db.Column(db.Text, default="")
+    applied = db.Column(db.Boolean, default=False)
+
+    student = db.relationship("Student")
 
 
 class ScoreEntry(db.Model):
