@@ -10,7 +10,7 @@ handoffs, result review, and public/TV leaderboard display.
 backend/                 Flask API, database models, migrations, auth, services
 backend/app.py           Flask application entry point
 backend/models.py        SQLAlchemy database tables
-backend/routes/          API and legacy Flask route modules
+backend/routes/          JSON API route module
 backend/services/        Business logic helpers, including scoring
 backend/migrations/      Alembic migration history
 
@@ -19,7 +19,7 @@ frontend/src/app/App.tsx Main React app and screens
 frontend/src/app/api.ts  Typed frontend API client
 frontend/src/styles/     Theme and global styles
 
-Docs/                    Meeting notes, workshop source material, planning files
+docs/                    Meeting notes, workshop source material, planning files
 ```
 
 Run backend commands from `backend/`. Run frontend commands from `frontend/`.
@@ -34,15 +34,18 @@ The app is organized around cohorts and workshop sessions.
    generated student code can be used as the matching identifier.
 4. Create a workshop session for the cohort.
 5. Use the Session Workspace during preparation or while the session is running.
-6. Create one or more Kahoot sections for that session.
-7. Assign questions to the relevant Kahoot section.
-8. Export the selected section's questions for Kahoot.
-9. Host the quiz manually in Kahoot.
-10. Import or retrieve results back into the same Kahoot section.
-11. Review unmatched result rows.
-12. Apply reviewed Kahoot points to the session score sheet.
-13. Publish reviewed scores when ready.
-14. Show the leaderboard through the public view or TV display.
+6. Review the auto-created workshop sections from the session template.
+7. Rename, reorder, collapse, or delete sections as needed for that presenter.
+8. Add questions to the relevant section during preparation or live facilitation.
+9. Export one section as a Kahoot-format `.xlsx`, or export all populated
+   sections as a `.zip`.
+10. Host the quiz manually in Kahoot.
+11. Upload the Kahoot result export back into the same section, or paste rows as
+    a fallback.
+12. Review unmatched result rows.
+13. Apply reviewed Kahoot points to the session score sheet.
+14. Publish reviewed scores when ready.
+15. Show the leaderboard through the public view or TV display.
 
 This design keeps the app useful even while the Kahoot integration is still being
 finalized. Kahoot handles the live quiz experience; this app owns the program
@@ -54,13 +57,17 @@ The current implementation does not pretend to start a Kahoot game through an
 unsupported endpoint. The working flow is:
 
 - The app stores Kahoot sections under a workshop session.
-- Each section can export its assigned questions.
+- New sessions are populated with editable sections based on the workshop
+  template.
+- Each section can export its assigned questions in Kahoot's spreadsheet shape.
+- A full session can export all populated sections as a zip of `.xlsx` files.
 - Staff creates and hosts the quiz in Kahoot.
 - Staff stores the Kahoot quiz/report link against the section.
 - Results are imported back into the app and matched to students.
 - Reviewed results are applied to the scoring table.
 
-The result import screen currently accepts pasted rows in this format:
+The result import screen accepts Kahoot `.csv` or `.xlsx` exports. It also keeps
+a paste fallback in this format:
 
 ```text
 identifier,nickname,correct,total,kahoot_points
@@ -193,13 +200,20 @@ PUT /api/sessions/<session_id>/scores
 
 GET  /api/sessions/<session_id>/questions
 POST /api/sessions/<session_id>/questions
+PATCH  /api/questions/<question_id>
+DELETE /api/questions/<question_id>
 
 GET   /api/sessions/<session_id>/kahoot-runs
 POST  /api/sessions/<session_id>/kahoot-runs
+POST  /api/sessions/<session_id>/kahoot-runs/reorder
 PATCH /api/kahoot-runs/<run_id>
+DELETE /api/kahoot-runs/<run_id>
+GET   /api/kahoot-runs/<run_id>/questions.xlsx
+GET   /api/sessions/<session_id>/kahoot-export.zip
 
 GET   /api/kahoot-runs/<run_id>/results
 POST  /api/kahoot-runs/<run_id>/results
+POST  /api/kahoot-runs/<run_id>/results/upload
 PATCH /api/kahoot-results/<result_id>
 POST  /api/kahoot-runs/<run_id>/apply-results
 
@@ -227,7 +241,6 @@ current single-file structure is still workable while the product flow is moving
 
 - Kahoot API retrieval is not connected yet. Manual result import uses the same
   backend path the adapter should call later.
-- File upload parsing for Kahoot reports is not implemented yet.
 - The frontend screens are still concentrated in `App.tsx`; this should be
   refactored once the workflow stabilizes.
 - Production deployment still needs final platform configuration, a managed

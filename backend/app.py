@@ -21,12 +21,7 @@ load_dotenv(BACKEND_ROOT / ".env", override=True)
 
 
 def create_app() -> Flask:
-    app = Flask(
-        __name__,
-        instance_path=str(BACKEND_ROOT / "instance"),
-        template_folder="templates",
-        static_folder="static",
-    )
+    app = Flask(__name__, instance_path=str(BACKEND_ROOT / "instance"), static_folder=None)
 
     is_production = os.environ.get("FLASK_ENV") == "production"
     secret_key = os.environ.get("SECRET_KEY")
@@ -67,15 +62,9 @@ def create_app() -> Flask:
     app.jinja_env.globals["student_code"] = student_code
 
     from models import Cohort, KahootResult, KahootRun, ScoreEntry, SessionQuestion, Student, StudentCohortMembership, WorkshopSession
-    from routes.admin import register_admin_routes
     from routes.api import register_api_routes
-    from routes.auth import register_auth_routes
-    from routes.public import register_public_routes
 
-    register_auth_routes(app)
     register_api_routes(app)
-    register_public_routes(app)
-    register_admin_routes(app)
 
     return app
 

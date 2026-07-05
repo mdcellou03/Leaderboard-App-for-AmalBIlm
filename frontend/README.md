@@ -66,18 +66,20 @@ screen components.
 The Kahoot page is scoped to the selected workshop session.
 
 1. Choose the workshop session.
-2. Create a Kahoot section, such as "Opening recap" or "Activity 1 quiz."
-3. Use Session Workspace > Questions to add questions and assign them to that
-   section.
-4. Return to Kahoot and export the selected section's CSV.
-5. Create or host the quiz in Kahoot. The app's Kahoot section is only the
-   local record that keeps questions/results tied to the workshop session.
-6. Save the Kahoot quiz/report link in the app.
-7. Import results back into the same Kahoot section.
-8. Review unmatched rows.
-9. Apply matched rows to the session score sheet.
+2. Review the session sections that were created from the workshop template.
+3. Rename, reorder, collapse, or delete sections so they match the presenter.
+4. Add questions directly to the selected section.
+5. Export the selected section as a Kahoot-format `.xlsx`, or export all
+   populated sections as a `.zip`.
+6. Create or host the quiz in Kahoot. The app's section is the local record that
+   keeps questions/results tied to the workshop session.
+7. Save the Kahoot quiz/report link in the app.
+8. Upload Kahoot result `.csv` or `.xlsx` files back into the same section, or
+   paste rows as a fallback.
+9. Review unmatched rows.
+10. Apply matched rows to the session score sheet.
 
-The current result import accepts pasted rows:
+The paste fallback uses this row format:
 
 ```text
 identifier,nickname,correct,total,kahoot_points
@@ -108,8 +110,13 @@ Important API helpers include:
 - `fetchKahootRuns`
 - `createKahootRun`
 - `updateKahootRun`
+- `deleteKahootRun`
+- `reorderKahootRuns`
+- `kahootRunExportUrl`
+- `sessionKahootExportUrl`
 - `fetchKahootResults`
 - `importKahootResults`
+- `uploadKahootResults`
 - `updateKahootResult`
 - `applyKahootResults`
 
@@ -122,10 +129,10 @@ Important API helpers include:
 5. Add students, assign one or more cohorts, and set Kahoot IDs.
 6. Create a session.
 7. Open the session workspace.
-8. Open Kahoot and create a Kahoot section.
-9. Add questions from Session Workspace and assign them to that section.
-10. Export the section CSV from Kahoot.
-11. Paste sample results into the results importer.
+8. Open Kahoot and select one of the auto-created sections.
+9. Add questions to that section.
+10. Export the section XLSX, or export all populated sections as a zip.
+11. Upload a sample Kahoot result CSV/XLSX, or paste sample rows.
 12. Resolve unmatched rows.
 13. Apply scores.
 14. Confirm the score sheet and leaderboard update.

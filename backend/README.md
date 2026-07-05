@@ -108,7 +108,8 @@ migrations/versions/    Database migration files
   one or more cohorts.
 - `WorkshopSession`: a single workshop within a cohort.
 - `SessionQuestion`: an engagement question saved under a workshop session.
-- `KahootRun`: one Kahoot section inside a workshop session.
+- `KahootRun`: one editable section inside a workshop session. It owns its
+  questions, Kahoot links, imported results, and ordering position.
 - `KahootResult`: one imported/retrieved player row for a Kahoot section.
 - `ScoreEntry`: one student's score record for one workshop session.
 
@@ -116,15 +117,19 @@ Questions may be session-level or attached to a specific `KahootRun`.
 
 ## Kahoot Result Flow
 
-1. Create a `KahootRun` for the selected workshop session.
-2. Attach questions to that run.
-3. Export those questions for Kahoot.
-4. Staff hosts the Kahoot manually.
-5. Import result rows into the run.
-6. The backend matches rows to students by saved Kahoot ID or generated student
+1. Creating a workshop session auto-creates default sections from the workshop
+   template.
+2. Staff can rename, delete, collapse in the UI, and reorder those sections.
+3. Staff attaches questions to a section.
+4. Export one section as a Kahoot-format `.xlsx`, or export every populated
+   section as a `.zip`.
+5. Staff hosts the Kahoot manually.
+6. Upload Kahoot result `.csv` or `.xlsx` files into the matching section, or
+   paste result rows as a fallback.
+7. The backend matches rows to students by saved Kahoot ID or generated student
    code, within the same cohort.
-7. Staff fixes unmatched rows through the frontend.
-8. Applying results adds awarded Kahoot points to each matched student's
+8. Staff fixes unmatched rows through the frontend.
+9. Applying results adds awarded Kahoot points to each matched student's
    `ScoreEntry`.
 
 The future Kahoot API adapter should call the same result import/apply routes.
@@ -160,13 +165,20 @@ PUT /api/sessions/<session_id>/scores
 
 GET  /api/sessions/<session_id>/questions
 POST /api/sessions/<session_id>/questions
+PATCH  /api/questions/<question_id>
+DELETE /api/questions/<question_id>
 
 GET   /api/sessions/<session_id>/kahoot-runs
 POST  /api/sessions/<session_id>/kahoot-runs
+POST  /api/sessions/<session_id>/kahoot-runs/reorder
 PATCH /api/kahoot-runs/<run_id>
+DELETE /api/kahoot-runs/<run_id>
+GET   /api/kahoot-runs/<run_id>/questions.xlsx
+GET   /api/sessions/<session_id>/kahoot-export.zip
 
 GET   /api/kahoot-runs/<run_id>/results
 POST  /api/kahoot-runs/<run_id>/results
+POST  /api/kahoot-runs/<run_id>/results/upload
 PATCH /api/kahoot-results/<result_id>
 POST  /api/kahoot-runs/<run_id>/apply-results
 

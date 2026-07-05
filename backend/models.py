@@ -95,6 +95,7 @@ class KahootRun(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     workshop_session_id = db.Column(db.Integer, db.ForeignKey("workshop_session.id"), nullable=False)
 
+    position = db.Column(db.Integer, nullable=False, default=1)
     title = db.Column(db.String(180), nullable=False, default="Kahoot Section")
     section_label = db.Column(db.String(120), nullable=True)
     status = db.Column(db.String(40), nullable=False, default="draft")
