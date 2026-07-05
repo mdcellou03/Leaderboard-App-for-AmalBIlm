@@ -10,7 +10,7 @@ from werkzeug.security import check_password_hash
 
 from extensions import db
 from extensions import limiter
-from models import Cohort, KahootResult, KahootRun, ScoreEntry, SessionQuestion, Student, WorkshopSession
+from models import Cohort, KahootResult, KahootRun, ScoreEntry, SessionQuestion, Student, StudentCohortMembership, WorkshopSession
 from services.scoring import apply_rubric_payload, compute_leaderboard, compute_rubric_points
 from services.students import student_code
 
@@ -78,9 +78,11 @@ def register_api_routes(app: Flask) -> None:
         cohort_id = _optional_int_query("cohort_id")
         students_query = Student.query
         if cohort_id is not None:
-            students_query = students_query.filter_by(cohort_id=cohort_id)
+            students_query = students_query.join(StudentCohortMembership).filter(
+                StudentCohortMembership.cohort_id == cohort_id
+            )
 
-        students = students_query.order_by(Student.name.asc()).all()
+        students = students_query.distinct().order_by(Student.name.asc()).all()
         return jsonify({"students": [_student_payload(student) for student in students]})
 
     @app.post("/api/students")
@@ -91,21 +93,20 @@ def register_api_routes(app: Flask) -> None:
 
         payload = request.get_json(silent=True) or {}
         name = str(payload.get("name", "")).strip()
-        cohort_id = _safe_int(payload.get("cohort_id"), default=0, minimum=0, maximum=999999)
+        cohort_ids = _parse_cohort_ids(payload)
         kahoot_identifier = str(payload.get("kahoot_identifier", "")).strip() or None
 
-        cohort = db.session.get(Cohort, cohort_id)
+        cohorts = _valid_cohorts(cohort_ids)
         if not name:
             return jsonify({"error": "Student name is required."}), 400
-        if not cohort:
-            return jsonify({"error": "A valid cohort is required."}), 400
+        if not cohorts:
+            return jsonify({"error": "At least one valid cohort is required."}), 400
 
-        student = Student(name=name, cohort_id=cohort.id, kahoot_identifier=kahoot_identifier)
+        student = Student(name=name, cohort_id=cohorts[0].id, kahoot_identifier=kahoot_identifier)
         db.session.add(student)
         db.session.flush()
-
-        for workshop_session in WorkshopSession.query.filter_by(cohort_id=cohort.id).all():
-            db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
+        _sync_student_cohorts(student, [cohort.id for cohort in cohorts])
+        _ensure_student_scores_for_cohorts(student, [cohort.id for cohort in cohorts])
 
         db.session.commit()
         return jsonify({"student": _student_payload(student)}), 201
@@ -122,26 +123,20 @@ def register_api_routes(app: Flask) -> None:
 
         payload = request.get_json(silent=True) or {}
         name = str(payload.get("name", student.name)).strip()
-        cohort_id = _safe_int(payload.get("cohort_id", student.cohort_id or 0), default=0, minimum=0, maximum=999999)
+        cohort_ids = _parse_cohort_ids(payload, fallback=[student.cohort_id] if student.cohort_id else [])
         kahoot_identifier = str(payload.get("kahoot_identifier", "")).strip() or None
 
-        cohort = db.session.get(Cohort, cohort_id)
+        cohorts = _valid_cohorts(cohort_ids)
         if not name:
             return jsonify({"error": "Student name is required."}), 400
-        if not cohort:
-            return jsonify({"error": "A valid cohort is required."}), 400
+        if not cohorts:
+            return jsonify({"error": "At least one valid cohort is required."}), 400
 
         student.name = name
-        student.cohort_id = cohort.id
+        student.cohort_id = cohorts[0].id
         student.kahoot_identifier = kahoot_identifier
-
-        for workshop_session in WorkshopSession.query.filter_by(cohort_id=cohort.id).all():
-            existing = ScoreEntry.query.filter_by(
-                student_id=student.id,
-                workshop_session_id=workshop_session.id,
-            ).first()
-            if not existing:
-                db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
+        _sync_student_cohorts(student, [cohort.id for cohort in cohorts])
+        _ensure_student_scores_for_cohorts(student, [cohort.id for cohort in cohorts])
 
         db.session.commit()
         return jsonify({"student": _student_payload(student)})
@@ -203,7 +198,10 @@ def register_api_routes(app: Flask) -> None:
         db.session.add(workshop_session)
         db.session.flush()
 
-        for student in Student.query.filter_by(cohort_id=cohort.id).all():
+        students = Student.query.join(StudentCohortMembership).filter(
+            StudentCohortMembership.cohort_id == cohort.id
+        ).distinct().all()
+        for student in students:
             db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
 
         db.session.commit()
@@ -477,7 +475,7 @@ def register_api_routes(app: Flask) -> None:
         if "student_id" in payload:
             student_id = _safe_int(payload.get("student_id"), default=0, minimum=0, maximum=999999)
             student = db.session.get(Student, student_id) if student_id else None
-            if student and student.cohort_id != result.kahoot_run.workshop_session.cohort_id:
+            if student and not _student_belongs_to_cohort(student, result.kahoot_run.workshop_session.cohort_id):
                 return jsonify({"error": "Student must belong to the same cohort as the session."}), 400
             result.student_id = student.id if student else None
             result.match_status = "matched" if student else "review"
@@ -550,10 +548,20 @@ def _cohort_payload(cohort: Cohort) -> dict:
 
 
 def _student_payload(student: Student) -> dict:
+    memberships = sorted(
+        student.cohort_memberships,
+        key=lambda membership: membership.cohort.name.lower() if membership.cohort else "",
+    )
+    cohort_ids = [membership.cohort_id for membership in memberships]
+    cohort_names = [membership.cohort.name for membership in memberships if membership.cohort]
+    primary_cohort_id = student.cohort_id or (cohort_ids[0] if cohort_ids else None)
+
     return {
         "id": student.id,
-        "cohort_id": student.cohort_id,
-        "cohort_name": student.cohort.name if student.cohort else None,
+        "cohort_id": primary_cohort_id,
+        "cohort_ids": cohort_ids,
+        "cohort_name": student.cohort.name if student.cohort else (cohort_names[0] if cohort_names else None),
+        "cohort_names": cohort_names,
         "code": student_code(student.id),
         "name": student.name,
         "kahoot_identifier": student.kahoot_identifier,
@@ -672,9 +680,71 @@ def _ensure_score_entries(workshop_session: WorkshopSession) -> None:
         row[0]
         for row in db.session.query(ScoreEntry.student_id).filter_by(workshop_session_id=workshop_session.id).all()
     }
-    for student in Student.query.filter_by(cohort_id=workshop_session.cohort_id).all():
+    students = Student.query.join(StudentCohortMembership).filter(
+        StudentCohortMembership.cohort_id == workshop_session.cohort_id
+    ).distinct().all()
+    for student in students:
         if student.id not in existing_student_ids:
             db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
+
+
+def _parse_cohort_ids(payload: dict, fallback: Optional[list[int]] = None) -> list[int]:
+    raw_ids = payload.get("cohort_ids")
+    if raw_ids is None:
+        raw_ids = fallback if fallback is not None else [payload.get("cohort_id")]
+    if not isinstance(raw_ids, list):
+        raw_ids = [raw_ids]
+
+    parsed: list[int] = []
+    for raw_id in raw_ids:
+        cohort_id = _safe_int(raw_id, default=0, minimum=0, maximum=999999)
+        if cohort_id and cohort_id not in parsed:
+            parsed.append(cohort_id)
+    return parsed
+
+
+def _valid_cohorts(cohort_ids: list[int]) -> list[Cohort]:
+    if not cohort_ids:
+        return []
+
+    cohorts_by_id = {
+        cohort.id: cohort
+        for cohort in Cohort.query.filter(Cohort.id.in_(cohort_ids)).all()
+    }
+    return [cohorts_by_id[cohort_id] for cohort_id in cohort_ids if cohort_id in cohorts_by_id]
+
+
+def _sync_student_cohorts(student: Student, cohort_ids: list[int]) -> None:
+    existing_ids = {membership.cohort_id for membership in student.cohort_memberships}
+    desired_ids = set(cohort_ids)
+
+    for membership in list(student.cohort_memberships):
+        if membership.cohort_id not in desired_ids:
+            db.session.delete(membership)
+
+    for cohort_id in cohort_ids:
+        if cohort_id not in existing_ids:
+            db.session.add(StudentCohortMembership(student_id=student.id, cohort_id=cohort_id))
+
+
+def _ensure_student_scores_for_cohorts(student: Student, cohort_ids: list[int]) -> None:
+    if not cohort_ids:
+        return
+
+    existing_session_ids = {
+        row[0]
+        for row in db.session.query(ScoreEntry.workshop_session_id).filter_by(student_id=student.id).all()
+    }
+    sessions = WorkshopSession.query.filter(WorkshopSession.cohort_id.in_(cohort_ids)).all()
+    for workshop_session in sessions:
+        if workshop_session.id not in existing_session_ids:
+            db.session.add(ScoreEntry(student_id=student.id, workshop_session_id=workshop_session.id))
+
+
+def _student_belongs_to_cohort(student: Student, cohort_id: Optional[int]) -> bool:
+    if not cohort_id:
+        return False
+    return any(membership.cohort_id == cohort_id for membership in student.cohort_memberships)
 
 
 def _stamp_kahoot_run_status(run: KahootRun, status: str) -> None:
@@ -713,7 +783,9 @@ def _match_kahoot_student(workshop_session: WorkshopSession, identifier: str, ni
     if not candidates:
         return None
 
-    students = Student.query.filter_by(cohort_id=workshop_session.cohort_id).all()
+    students = Student.query.join(StudentCohortMembership).filter(
+        StudentCohortMembership.cohort_id == workshop_session.cohort_id
+    ).distinct().all()
     for student in students:
         student_identifiers = {
             _normalize_identifier(student.kahoot_identifier or ""),

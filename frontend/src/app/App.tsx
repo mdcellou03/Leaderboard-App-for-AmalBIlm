@@ -20,7 +20,7 @@ type KahootStatus = "questions-ready" | "exported" | "hosted" | "results-importe
 type GradeStatus = "draft" | "reviewed" | "published";
 
 interface Cohort { id: string; name: string; term: string; status: "active" | "archived"; sessionCount: number; studentCount: number; }
-interface Student { id: string; code: string; name: string; cohortId: string; playerId?: string; attendance: number; totalSessions: number; totalPoints: number; rank: number; avatarId: number; badges: string[]; streak: number; joinDate: string; }
+interface Student { id: string; code: string; name: string; cohortId: string; cohortIds: string[]; cohortNames: string[]; playerId?: string; attendance: number; totalSessions: number; totalPoints: number; rank: number; avatarId: number; badges: string[]; streak: number; joinDate: string; }
 interface Session { id: string; cohortId: string; num: number; title: string; date: string; presenter: string; status: SessionStatus; kahootStatus: KahootStatus; notes?: string; questionCount?: number; }
 interface SessionGrade { studentId: string; present: boolean; punctual: boolean; deliverable: boolean; kahootPts: number; participation: number; teamwork: number; adab: number; penalty: number; penaltyNote: string; notes?: string; status: GradeStatus; }
 interface ScreenProps {
@@ -157,7 +157,7 @@ const mapApiCohorts = (cohorts: ApiCohort[], students: ApiStudent[], sessions: A
   return cohorts.map(cohort => {
     const id = String(cohort.id);
     const sessionCount = sessions.filter(session => session.cohort_id === cohort.id).length;
-    const studentCount = students.filter(student => student.cohort_id === cohort.id).length;
+    const studentCount = students.filter(student => (student.cohort_ids ?? [student.cohort_id]).includes(cohort.id)).length;
 
     return {
       id,
@@ -180,6 +180,8 @@ const mapApiStudents = (leaderboard: ApiLeaderboardRow[], students: ApiStudent[]
       code: student.code,
       name: student.name,
       cohortId: String(student.cohort_id ?? activeCohort),
+      cohortIds: (student.cohort_ids?.length ? student.cohort_ids : [student.cohort_id]).filter(Boolean).map(String),
+      cohortNames: student.cohort_names ?? (student.cohort_name ? [student.cohort_name] : []),
       playerId: student.kahoot_identifier ?? "",
       attendance: row?.attended_sessions ?? 0,
       totalSessions: Math.max(row?.attended_sessions ?? 0, row?.current_streak ?? 0),
@@ -931,7 +933,7 @@ const LeaderboardScreen = (props: ScreenProps) => {
   const [timeFilter, setTimeFilter] = useState<"session" | "alltime" | "improvers">("session");
   const [sessionScores, setSessionScores] = useState<ApiScoreEntry[]>([]);
   const [sessionScoreStatus, setSessionScoreStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const students = props.allStudents.filter(s => s.cohortId === filterCohort);
+  const students = props.allStudents.filter(s => s.cohortIds.includes(filterCohort));
   const sorted   = [...students].sort((a, b) => b.totalPoints - a.totalPoints);
   const cohortSessions = props.sessions.filter(session => session.cohortId === filterCohort);
   const selectedSession = cohortSessions.find(session => session.id === props.selectedSessionId) ?? cohortSessions[0] ?? props.sessions[0];
@@ -1050,7 +1052,8 @@ const LeaderboardScreen = (props: ScreenProps) => {
                 {sorted.map((stu, i) => {
                   const rank  = i + 1;
                   const color = rank <= 3 ? RANK_COLORS[rank - 1] : "var(--muted-foreground)";
-                  const coh   = props.cohorts.find(c => c.id === stu.cohortId);
+                  const coh = props.cohorts.find(c => c.id === stu.cohortId);
+                  const cohortLabel = stu.cohortNames.length ? stu.cohortNames.join(", ") : stu.cohortIds.join(", ");
                   const streakText = stu.streak > 0 ? `+${stu.streak}` : "-";
                   return (
                     <tr key={stu.id}>
@@ -1064,7 +1067,7 @@ const LeaderboardScreen = (props: ScreenProps) => {
                           </div>
                         </div>
                       </td>
-                      <td style={TD}><span style={{ padding: "2px 8px", background: "var(--secondary)", borderRadius: 4, fontSize: 11 }}>{coh?.name ?? stu.cohortId}</span></td>
+                      <td style={TD}><span style={{ padding: "2px 8px", background: "var(--secondary)", borderRadius: 4, fontSize: 11 }}>{cohortLabel}</span></td>
                       <td style={{ ...TD, fontFamily: "monospace", fontWeight: 700 }}>{stu.totalPoints.toLocaleString()}</td>
                       <td style={{ ...TD, color: "var(--muted-foreground)" }}>{stu.attendance}/{stu.totalSessions}</td>
                       <td style={{ ...TD, color: stu.streak > 0 ? "#166534" : "var(--muted-foreground)", fontWeight: stu.streak > 0 ? 700 : 500 }}>{streakText}</td>
@@ -1164,7 +1167,7 @@ const StudentsScreen = (props: ScreenProps) => {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", cohortId: props.activeCohort, playerId: "" });
+  const [form, setForm] = useState({ name: "", cohortIds: props.activeCohort ? [props.activeCohort] : [], playerId: "" });
   const [formError, setFormError] = useState("");
 
   useEffect(() => {
@@ -1172,7 +1175,7 @@ const StudentsScreen = (props: ScreenProps) => {
   }, [props.activeCohort]);
 
   const filtered = props.allStudents.filter(s =>
-    (filterCohort === "all" || s.cohortId === filterCohort) &&
+    (filterCohort === "all" || s.cohortIds.includes(filterCohort)) &&
     (s.name.toLowerCase().includes(search.toLowerCase()) || s.code.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -1186,9 +1189,9 @@ const StudentsScreen = (props: ScreenProps) => {
     setEditingId(s.id);
     setAddOpen(false);
     setFormError("");
-    setForm({ name: s.name, cohortId: s.cohortId, playerId: s.playerId ?? "" });
+    setForm({ name: s.name, cohortIds: s.cohortIds.length ? s.cohortIds : [s.cohortId], playerId: s.playerId ?? "" });
   };
-  const openAdd  = () => { setAddOpen(true); setEditingId(null); setFormError(""); setForm({ name: "", cohortId: props.activeCohort || props.cohorts[0]?.id || "", playerId: "" }); };
+  const openAdd  = () => { setAddOpen(true); setEditingId(null); setFormError(""); setForm({ name: "", cohortIds: props.activeCohort ? [props.activeCohort] : props.cohorts[0]?.id ? [props.cohorts[0].id] : [], playerId: "" }); };
   const close    = () => { setAddOpen(false); setEditingId(null); setFormError(""); };
 
   const submitStudent = async () => {
@@ -1196,7 +1199,8 @@ const StudentsScreen = (props: ScreenProps) => {
     try {
       const payload = {
         name: form.name,
-        cohort_id: Number(form.cohortId),
+        cohort_id: Number(form.cohortIds[0]),
+        cohort_ids: form.cohortIds.map(Number),
         kahoot_identifier: form.playerId.trim() || undefined,
       };
 
@@ -1268,7 +1272,7 @@ const StudentsScreen = (props: ScreenProps) => {
             </thead>
             <tbody>
               {filtered.map(stu => {
-                const coh = props.cohorts.find(c => c.id === stu.cohortId);
+                const cohortLabel = stu.cohortNames.length ? stu.cohortNames.join(", ") : stu.cohortIds.join(", ");
                 const dup = nameCounts[stu.name] > 1;
                 return (
                   <tr key={stu.id} style={{ background: editingId === stu.id ? "var(--secondary)" : "transparent" }}>
@@ -1280,7 +1284,7 @@ const StudentsScreen = (props: ScreenProps) => {
                         {dup && <AlertTriangle size={12} color="#f59e0b" title="Duplicate name — use code to distinguish" />}
                       </div>
                     </td>
-                    <td style={TD}><span style={{ padding: "2px 7px", background: "var(--secondary)", borderRadius: 4, fontSize: 11 }}>{coh?.name ?? stu.cohortId}</span></td>
+                    <td style={TD}><span style={{ padding: "2px 7px", background: "var(--secondary)", borderRadius: 4, fontSize: 11 }}>{cohortLabel}</span></td>
                     <td style={{ ...TD, fontFamily: "monospace", fontSize: 11, color: stu.playerId ? "var(--foreground)" : "var(--muted-foreground)" }}>{stu.playerId || <span style={{ fontStyle: "italic", fontFamily: "inherit" }}>Not set</span>}</td>
                     <td style={{ ...TD, color: "var(--muted-foreground)" }}>{stu.attendance}/{stu.totalSessions}</td>
                     <td style={{ ...TD, fontFamily: "monospace", fontWeight: 700 }}>{stu.totalPoints.toLocaleString()}</td>
@@ -1315,10 +1319,28 @@ const StudentsScreen = (props: ScreenProps) => {
                 <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Permanent internal ID. If Kahoot match is blank, this code becomes the matching fallback.</p>
               </div>
               <div>
-                <label style={labelSt}>Cohort</label>
-                <select value={form.cohortId} onChange={e => setForm(f => ({ ...f, cohortId: e.target.value }))} style={{ ...inputSt }}>
-                  {props.cohorts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <label style={labelSt}>Cohorts</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid var(--border)", borderRadius: 8, padding: 10, background: "var(--background)" }}>
+                  {props.cohorts.map(c => {
+                    const checked = form.cohortIds.includes(c.id);
+                    return (
+                      <label key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--foreground)", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={event => setForm(f => {
+                            const nextIds = event.target.checked
+                              ? [...f.cohortIds, c.id]
+                              : f.cohortIds.filter(id => id !== c.id);
+                            return { ...f, cohortIds: nextIds };
+                          })}
+                        />
+                        {c.name}
+                      </label>
+                    );
+                  })}
+                </div>
+                <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Students can belong to more than one cohort. Sessions still belong to one cohort.</p>
               </div>
               <div>
                 <label style={labelSt}>Kahoot Match <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--muted-foreground)", fontWeight: 400 }}>(optional)</span></label>
@@ -1336,7 +1358,7 @@ const StudentsScreen = (props: ScreenProps) => {
                   <Trash2 size={13} /> Delete
                 </button>
               )}
-              <button onClick={submitStudent} disabled={!form.name.trim() || !form.cohortId} style={{ flex: 1, padding: 9, borderRadius: 8, border: "none", background: form.name.trim() && form.cohortId ? "var(--primary)" : "var(--muted)", color: form.name.trim() && form.cohortId ? "var(--primary-foreground)" : "var(--muted-foreground)", cursor: form.name.trim() && form.cohortId ? "pointer" : "not-allowed", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <button onClick={submitStudent} disabled={!form.name.trim() || form.cohortIds.length === 0} style={{ flex: 1, padding: 9, borderRadius: 8, border: "none", background: form.name.trim() && form.cohortIds.length > 0 ? "var(--primary)" : "var(--muted)", color: form.name.trim() && form.cohortIds.length > 0 ? "var(--primary-foreground)" : "var(--muted-foreground)", cursor: form.name.trim() && form.cohortIds.length > 0 ? "pointer" : "not-allowed", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 <Save size={13} /> {addOpen ? "Add Student" : "Save Changes"}
               </button>
               <button onClick={close} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 13 }}>Cancel</button>
@@ -2739,12 +2761,9 @@ const ReportsScreen = ({ activeCohort, cohorts, students, sessions }: ScreenProp
   const avgScore   = students.length ? Math.round(students.reduce((a, s) => a + s.totalPoints, 0) / students.length) : 0;
   const maxBar     = Math.max(...ATTENDANCE_TREND.map(d => d.rate), 1);
 
-  const topImprovers = [
-    { name: "Yusuf Karimi",   code: "STU-003", sessions: 11, delta: 340 },
-    { name: "Fatimah Noor",   code: "STU-002", sessions: 13, delta: 280 },
-    { name: "Ibrahim Al-Rashid", code: "STU-001", sessions: 12, delta: 210 },
-    { name: "Maryam Hassan",  code: "STU-004", sessions: 12, delta: 190 },
-  ];
+  const topImprovers = [...students]
+    .sort((a, b) => b.streak - a.streak || b.totalPoints - a.totalPoints)
+    .slice(0, 4);
 
   const needsFollowup = students.filter(s => (s.attendance / Math.max(s.totalSessions, 1)) < 0.8);
 
@@ -2797,18 +2816,21 @@ const ReportsScreen = ({ activeCohort, cohorts, students, sessions }: ScreenProp
       {/* Top improvers + follow-up side by side */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <div style={{ padding: "18px 22px", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10 }}>
-          <h3 style={{ fontFamily: "Lora, serif", fontSize: 14, fontWeight: 700, color: "var(--foreground)", margin: "0 0 14px" }}>Top Improvers</h3>
+          <h3 style={{ fontFamily: "Lora, serif", fontSize: 14, fontWeight: 700, color: "var(--foreground)", margin: "0 0 14px" }}>Current Standouts</h3>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead><tr>{["#", "Student", "Sessions", "+Pts"].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
+            <thead><tr>{["#", "Student", "Attendance", "Points"].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
             <tbody>
               {topImprovers.map((s, i) => (
-                <tr key={s.code} style={{ borderBottom: "1px solid var(--border)" }}>
+                <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td style={{ ...TD, fontFamily: "monospace", fontWeight: 700, color: "var(--muted-foreground)" }}>#{i + 1}</td>
                   <td style={TD}><div style={{ fontWeight: 600 }}>{s.name}</div><div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--muted-foreground)" }}>{s.code}</div></td>
-                  <td style={{ ...TD, fontFamily: "monospace" }}>{s.sessions}</td>
-                  <td style={TD}><span style={{ fontFamily: "monospace", fontWeight: 700, color: "#10b981" }}>+{s.delta}</span></td>
+                  <td style={{ ...TD, fontFamily: "monospace" }}>{s.attendance}/{s.totalSessions}</td>
+                  <td style={TD}><span style={{ fontFamily: "monospace", fontWeight: 700, color: "var(--primary)" }}>{s.totalPoints.toLocaleString()}</span></td>
                 </tr>
               ))}
+              {topImprovers.length === 0 && (
+                <tr><td colSpan={4} style={{ ...TD, textAlign: "center", color: "var(--muted-foreground)", padding: 22 }}>No students added yet.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -3114,7 +3136,7 @@ export default function App() {
     }
   };
 
-  const students = useMemo(() => allStudents.filter(s => s.cohortId === activeCohort), [activeCohort, allStudents]);
+  const students = useMemo(() => allStudents.filter(s => s.cohortIds.includes(activeCohort)), [activeCohort, allStudents]);
   const sessions  = useMemo(() => allSessions.filter(s => s.cohortId === activeCohort), [activeCohort, allSessions]);
   const selectedSession = allSessions.find(s => s.id === selectedSessionId);
 

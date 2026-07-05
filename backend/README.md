@@ -103,7 +103,9 @@ migrations/versions/    Database migration files
 ## Main Data Model
 
 - `Cohort`: a term or program grouping.
-- `Student`: a participant assigned to a cohort.
+- `Student`: a participant who may belong to more than one cohort.
+- `StudentCohortMembership`: the join table that stores student membership in
+  one or more cohorts.
 - `WorkshopSession`: a single workshop within a cohort.
 - `SessionQuestion`: an engagement question saved under a workshop session.
 - `KahootRun`: one Kahoot section inside a workshop session.
@@ -127,6 +129,10 @@ Questions may be session-level or attached to a specific `KahootRun`.
 
 The future Kahoot API adapter should call the same result import/apply routes.
 That keeps manual import and automated retrieval consistent.
+
+Saving a Kahoot quiz or report URL only records where staff handled the live
+quiz. Automatic result retrieval still needs authenticated Kahoot report/API
+access for the account being used.
 
 ## API Areas
 

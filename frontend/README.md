@@ -52,7 +52,8 @@ screen components.
 - Public access screen: read-only leaderboard plus staff login entry.
 - Dashboard: current cohort overview.
 - Leaderboard: cohort leaderboard and TV display entry.
-- Students: create, edit, delete, and assign Kahoot IDs.
+- Students: create, edit, delete, assign to one or more cohorts, and assign
+  Kahoot IDs.
 - Sessions: create sessions and open the session workspace.
 - Session Workspace: presenter-focused control room for one selected session.
 - Kahoot: section-based Kahoot export, link tracking, result import, matching,
@@ -69,7 +70,8 @@ The Kahoot page is scoped to the selected workshop session.
 3. Use Session Workspace > Questions to add questions and assign them to that
    section.
 4. Return to Kahoot and export the selected section's CSV.
-5. Create or host the quiz in Kahoot.
+5. Create or host the quiz in Kahoot. The app's Kahoot section is only the
+   local record that keeps questions/results tied to the workshop session.
 6. Save the Kahoot quiz/report link in the app.
 7. Import results back into the same Kahoot section.
 8. Review unmatched rows.
@@ -83,7 +85,9 @@ STU-001,AishaK,4,5,8200
 ```
 
 The future API adapter should fill the same result table instead of bypassing
-the review/apply flow.
+the review/apply flow. A saved Kahoot/report link is not enough by itself to
+retrieve results; the backend will need authenticated access to Kahoot's report
+data for the account/plan being used.
 
 ## API Client
 
@@ -115,7 +119,7 @@ Important API helpers include:
 2. Start the frontend.
 3. Log in as staff.
 4. Create a cohort.
-5. Add students and set Kahoot IDs.
+5. Add students, assign one or more cohorts, and set Kahoot IDs.
 6. Create a session.
 7. Open the session workspace.
 8. Open Kahoot and create a Kahoot section.

@@ -6,7 +6,9 @@ export interface ApiCohort {
 export interface ApiStudent {
   id: number;
   cohort_id: number | null;
+  cohort_ids: number[];
   cohort_name: string | null;
+  cohort_names: string[];
   code: string;
   name: string;
   kahoot_identifier: string | null;
@@ -224,7 +226,8 @@ export async function createCohort(name: string): Promise<ApiCohort> {
 
 export async function createStudent(payload: {
   name: string;
-  cohort_id: number;
+  cohort_id?: number;
+  cohort_ids?: number[];
   kahoot_identifier?: string;
 }): Promise<ApiStudent> {
   const data = await postJson<{ student: ApiStudent }>("/api/students", payload);
@@ -235,7 +238,8 @@ export async function updateStudent(
   studentId: number,
   payload: {
     name: string;
-    cohort_id: number;
+    cohort_id?: number;
+    cohort_ids?: number[];
     kahoot_identifier?: string;
   },
 ): Promise<ApiStudent> {

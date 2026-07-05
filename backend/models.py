@@ -10,6 +10,7 @@ class Student(db.Model):
     kahoot_identifier = db.Column(db.String(120), nullable=True)
 
     scores = db.relationship("ScoreEntry", backref="student", cascade="all, delete-orphan")
+    cohort_memberships = db.relationship("StudentCohortMembership", back_populates="student", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Student {self.name}>"
@@ -20,10 +21,24 @@ class Cohort(db.Model):
     name = db.Column(db.String(120), nullable=False, unique=True)
 
     students = db.relationship("Student", backref="cohort")
+    student_memberships = db.relationship("StudentCohortMembership", back_populates="cohort", cascade="all, delete-orphan")
     sessions = db.relationship("WorkshopSession", backref="cohort")
 
     def __repr__(self) -> str:
         return f"<Cohort {self.name}>"
+
+
+class StudentCohortMembership(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("student.id"), nullable=False)
+    cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"), nullable=False)
+
+    student = db.relationship("Student", back_populates="cohort_memberships")
+    cohort = db.relationship("Cohort", back_populates="student_memberships")
+
+    __table_args__ = (
+        db.UniqueConstraint("student_id", "cohort_id", name="uniq_student_cohort_membership"),
+    )
 
 
 class WorkshopSession(db.Model):

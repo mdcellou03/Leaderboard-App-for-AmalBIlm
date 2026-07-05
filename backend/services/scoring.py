@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from models import ScoreEntry, Student, WorkshopSession
+from models import ScoreEntry, Student, StudentCohortMembership, WorkshopSession
 from services.students import student_code
 
 
@@ -124,9 +124,11 @@ def clamp_int(value, minimum: int, maximum: int) -> int:
 def compute_leaderboard(cohort_id: Optional[int] = None) -> List[dict]:
     students_query = Student.query
     if cohort_id is not None:
-        students_query = students_query.filter_by(cohort_id=cohort_id)
+        students_query = students_query.join(StudentCohortMembership).filter(
+            StudentCohortMembership.cohort_id == cohort_id
+        )
 
-    students = students_query.order_by(Student.name.asc()).all()
+    students = students_query.distinct().order_by(Student.name.asc()).all()
     sessions_query = WorkshopSession.query
     if cohort_id is not None:
         sessions_query = sessions_query.filter_by(cohort_id=cohort_id)

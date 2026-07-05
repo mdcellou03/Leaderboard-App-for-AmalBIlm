@@ -29,7 +29,7 @@ Run backend commands from `backend/`. Run frontend commands from `frontend/`.
 The app is organized around cohorts and workshop sessions.
 
 1. Create or select a cohort.
-2. Add students to that cohort.
+2. Add students and assign them to one or more cohorts.
 3. Set each student's Kahoot ID when known. If no Kahoot ID is available, the
    generated student code can be used as the matching identifier.
 4. Create a workshop session for the cohort.
@@ -70,6 +70,11 @@ STU-001,AishaK,4,5,8200
 The future Kahoot API adapter should feed the same backend result-import endpoint
 instead of inventing a separate scoring path. That keeps manual import and API
 retrieval consistent.
+
+A saved Kahoot quiz/report link is a reference, not an integration by itself.
+Automatic retrieval requires authenticated access to whatever Kahoot report/API
+endpoint is available for the account or paid plan. Until that is confirmed, the
+manual import path remains the reliable fallback.
 
 ## Tech Stack
 
@@ -208,6 +213,8 @@ Authenticated write endpoints require staff login and CSRF protection.
 
 - Scoring rules live in `backend/services/scoring.py`.
 - Student display codes live in `backend/services/students.py`.
+- Student-to-cohort membership is many-to-many. A workshop session still belongs
+  to one cohort.
 - Database shape lives in `backend/models.py`.
 - API behavior lives in `backend/routes/api.py`.
 - Frontend API calls live in `frontend/src/app/api.ts`.
