@@ -1464,7 +1464,10 @@ def _awarded_points_for_result(run: KahootRun, correct_count: int, total_questio
     if possible_points and total_questions > 0:
         return round((correct_count / total_questions) * possible_points)
 
-    return min(kahoot_points, 20000)
+    if total_questions > 0:
+        return correct_count
+
+    return 0
 
 
 def _optional_int_query(name: str) -> Optional[int]:

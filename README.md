@@ -33,11 +33,11 @@ The app is organized around cohorts and workshop sessions.
 3. Use the generated student code as the student's Kahoot nickname/display name,
    or save a custom exact Kahoot display name if needed.
 4. Create a workshop session for the cohort.
-5. Use the Session Workspace during preparation or while the session is running.
-6. Use Presenter View when the presenter only needs the current section and its
-   Kahoot link.
-7. Use Facilitator View to manage the setup behind the scenes.
-8. Review the auto-created workshop sections from the session template.
+5. Open Live Session as the control room for the selected session.
+6. Use Audience Display when anything is projected to students.
+7. Use Run Section only for staff-facing section questions and Kahoot links.
+8. Use Manage Questions to review the auto-created workshop sections from the
+   session template.
 9. Rename, reorder, collapse, or delete sections as needed for that presenter.
 10. Add questions directly to the relevant section during preparation or live
    facilitation.
@@ -47,18 +47,20 @@ The app is organized around cohorts and workshop sessions.
 13. Upload the Kahoot result export back into the same section, or paste rows as
     a fallback.
 14. Review unmatched result rows.
-15. Apply reviewed Kahoot points to the session score sheet.
-16. Publish reviewed scores when ready.
-17. Show the leaderboard through the public view or TV display.
+15. Open Grading as a separate screen for attendance, behaviour, deliverables,
+    penalties, and app-awarded quiz points.
+16. Apply reviewed Kahoot points to the session score sheet.
+17. Publish reviewed scores when ready.
+18. Show the leaderboard through the public view or TV display.
 
 This design keeps the app useful even while the Kahoot integration is still being
 finalized. Kahoot handles the live quiz experience; this app owns the program
 records, matching, scoring, and leaderboard.
 
-Presenter View is not the audience display. It hides correct answers by default,
-but staff should use TV Display or Kahoot itself for projection. TV Display is a
-full-screen leaderboard surface and does not expose staff controls, answer keys,
-or scoring forms.
+Live Session is staff-only. It gives staff clear actions for projecting the
+leaderboard, running the current section, editing questions, grading, and
+importing quiz results. TV Display is the audience-safe surface: it shows the
+leaderboard without staff controls, answer keys, or scoring forms.
 
 ## Kahoot Integration Position
 
@@ -96,6 +98,27 @@ A saved Kahoot quiz/report link is a reference, not an integration by itself.
 Automatic retrieval requires authenticated access to whatever Kahoot report/API
 endpoint is available for the account or paid plan. Until that is confirmed, the
 manual import path remains the reliable fallback.
+
+## Kahoot Score Handling
+
+Kahoot's raw score is not used directly as the leaderboard grade. Raw Kahoot
+points can vary because Kahoot may include speed, streaks, and game settings.
+The app keeps the raw score for reference, then converts the result into app
+quiz points for the selected section.
+
+The app-owned grading rule is:
+
+```text
+awarded quiz points = correct answers / total questions * section point total
+```
+
+If a section has five questions worth one app point each, the section is worth
+five leaderboard quiz points. If the team wants that quiz to be worth ten
+leaderboard points, set the section's question weights so they add up to ten.
+
+Kahoot quiz points are separate from the deliverable checkbox. Deliverable,
+attendance, punctuality, participation, teamwork, conduct, penalties, and quiz
+points are separate fields in the session score sheet.
 
 ## Tech Stack
 
@@ -256,8 +279,9 @@ current single-file structure is still workable while the product flow is moving
 
 - Kahoot API retrieval is not connected yet. Manual result import uses the same
   backend path the adapter should call later.
-- The frontend screens are still concentrated in `App.tsx`; this should be
-  refactored once the workflow stabilizes.
+- The frontend screens are still concentrated in `App.tsx`; the old unused
+  workspace UI has been removed, but the remaining screens should eventually be
+  split into smaller components.
 - Production deployment still needs final platform configuration, a managed
   PostgreSQL database, persistent rate-limit storage, and proper secret handling.
 - Automated tests should be added around scoring, result matching, and protected
