@@ -389,7 +389,7 @@ def register_api_routes(app: Flask) -> None:
             option_d=options[3] if len(options) > 3 else None,
             correct_option=correct_option,
             time_limit_seconds=_safe_int(payload.get("time_limit_seconds"), default=20, minimum=5, maximum=240),
-            points=_safe_int(payload.get("points"), default=1000, minimum=0, maximum=2000),
+            points=_safe_int(payload.get("points"), default=1, minimum=0, maximum=100),
         )
         db.session.add(question)
         workshop_session.kahoot_status = "questions-ready"
@@ -437,7 +437,7 @@ def register_api_routes(app: Flask) -> None:
         question.option_d = options[3] if len(options) > 3 else None
         question.correct_option = correct_option
         question.time_limit_seconds = _safe_int(payload.get("time_limit_seconds", question.time_limit_seconds), default=question.time_limit_seconds, minimum=5, maximum=240)
-        question.points = _safe_int(payload.get("points", question.points), default=question.points, minimum=0, maximum=2000)
+        question.points = _safe_int(payload.get("points", question.points), default=question.points, minimum=0, maximum=100)
         question.kahoot_run_id = kahoot_run.id if kahoot_run else None
         question.workshop_session.kahoot_status = "questions-ready"
 

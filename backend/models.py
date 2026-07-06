@@ -83,7 +83,7 @@ class SessionQuestion(db.Model):
     option_d = db.Column(db.String(255), nullable=True)
     correct_option = db.Column(db.String(1), nullable=False)
     time_limit_seconds = db.Column(db.Integer, nullable=False, default=20)
-    points = db.Column(db.Integer, nullable=False, default=1000)
+    points = db.Column(db.Integer, nullable=False, default=1)
     kahoot_question_id = db.Column(db.String(120), nullable=True)
 
     __table_args__ = (

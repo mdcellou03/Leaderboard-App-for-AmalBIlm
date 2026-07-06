@@ -39,12 +39,6 @@ interface ScreenProps {
   refreshData: () => Promise<void>;
 }
 
-// ============================================================
-// MOCK DATA
-// ============================================================
-
-const COHORTS: Cohort[] = [];
-
 const BADGE_DEFS: Record<string, { symbol: string; label: string; color: string }> = {
   "top-scorer":         { symbol: "★", label: "Top Scorer",        color: "#B8860B" },
   "perfect-attendance": { symbol: "◆", label: "Full Attendance",   color: "#2E7D32" },
@@ -53,32 +47,6 @@ const BADGE_DEFS: Record<string, { symbol: string; label: string; color: string 
   "team-player":        { symbol: "●", label: "Team Player",       color: "#01579B" },
   "deliverable":        { symbol: "■", label: "All Delivered",     color: "#1B5E20" },
 };
-
-const STUDENTS: Student[] = [];
-
-const SESSIONS: Session[] = [];
-const UNUSED_SESSION_FIXTURES: Session[] = [
-  { id: "ses6",  cohortId: "c1", num: 6,  title: "Goal Setting and Personal Vision",         date: "2026-02-19", presenter: "Ustadh Tariq", status: "published", kahootStatus: "reviewed"          },
-  { id: "ses7",  cohortId: "c1", num: 7,  title: "Communication and Active Listening",         date: "2026-02-26", presenter: "Sr. Amina",    status: "published", kahootStatus: "reviewed"          },
-  { id: "ses8",  cohortId: "c1", num: 8,  title: "Time Management and Prioritisation",         date: "2026-03-05", presenter: "Br. Hassan",   status: "published", kahootStatus: "reviewed"          },
-  { id: "ses9",  cohortId: "c1", num: 9,  title: "Financial Literacy: Budgeting and Giving",   date: "2026-03-19", presenter: "Ustadh Tariq", status: "published", kahootStatus: "reviewed"          },
-  { id: "ses10", cohortId: "c1", num: 10, title: "Digital Citizenship and Online Ethics",      date: "2026-03-26", presenter: "Sr. Amina",    status: "published", kahootStatus: "reviewed"          },
-  { id: "ses11", cohortId: "c1", num: 11, title: "Leadership and Community Responsibility",    date: "2026-04-09", presenter: "Br. Hassan",   status: "published", kahootStatus: "reviewed"          },
-  { id: "ses12", cohortId: "c1", num: 12, title: "Conflict Resolution and Teamwork",           date: "2026-04-24", presenter: "Ustadh Tariq", status: "published", kahootStatus: "reviewed"          },
-  { id: "ses13", cohortId: "c1", num: 13, title: "Career Exploration and Personal Brand",      date: "2026-05-15", presenter: "Sr. Amina",    status: "review",    kahootStatus: "results-imported", notes: "Quiz results imported. Grades pending final review." },
-  { id: "ses14", cohortId: "c1", num: 14, title: "Program Showcase and Celebration",           date: "2026-05-29", presenter: "Ustadh Tariq", status: "draft",     kahootStatus: "questions-ready",  notes: "Closing session. Quiz questions drafted — export when ready." },
-  { id: "sm1",   cohortId: "c2", num: 1,  title: "Introduction and Program Overview",          date: "2026-06-06", presenter: "Sr. Amina",    status: "published", kahootStatus: "reviewed"          },
-  { id: "sm2",   cohortId: "c2", num: 2,  title: "Values-Based Decision Making",               date: "2026-06-13", presenter: "Ustadh Tariq", status: "review",    kahootStatus: "results-imported", notes: "Quiz results imported. Grades pending review." },
-];
-
-const KAHOOT_QUESTIONS: Array<{ id: string; text: string; timeLimit: number; points: number }> = [];
-const UNUSED_KAHOOT_QUESTION_FIXTURES: Array<{ id: string; text: string; timeLimit: number; points: number }> = [
-  { id: "kq1", text: "Which of the 5 pillars comes first?",                       timeLimit: 20, points: 1000 },
-  { id: "kq2", text: "How many times do Muslims pray daily?",                      timeLimit: 15, points: 2000 },
-  { id: "kq3", text: "What is the Arabic word for charity?",                       timeLimit: 20, points: 1000 },
-  { id: "kq4", text: "In which month is the Quran said to have been revealed?",   timeLimit: 20, points: 2000 },
-  { id: "kq5", text: "What city did the Prophet ﷺ migrate to during the Hijra?", timeLimit: 25, points: 2000 },
-];
 
 const ATTENDANCE_TREND: { session: string; rate: number }[] = [
   { session: "S08", rate: 88  },
@@ -501,6 +469,7 @@ const TVMode = ({ students, session, intermission, setIntermission, onExit }: {
 }) => {
   const sorted = [...students].sort((a, b) => b.totalPoints - a.totalPoints);
   const leader = sorted[0];
+  const [audienceMode, setAudienceMode] = useState<"leaderboard" | "kahoot">("leaderboard");
 
   if (intermission) {
     return (
@@ -518,6 +487,32 @@ const TVMode = ({ students, session, intermission, setIntermission, onExit }: {
     );
   }
 
+  if (audienceMode === "kahoot") {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "#081A18", color: "#F0E6C8", display: "grid", placeItems: "center", textAlign: "center", padding: 36 }}>
+        <div style={{ maxWidth: 960, width: "100%", display: "flex", flexDirection: "column", gap: 28, alignItems: "center" }}>
+          <p style={{ margin: 0, color: "#C8960C", fontSize: 14, textTransform: "uppercase", letterSpacing: "0.18em" }}>Kahoot time</p>
+          <h1 style={{ margin: 0, fontFamily: "Lora, serif", fontSize: "clamp(3rem, 9vw, 7rem)" }}>Join at kahoot.it</h1>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(260px, 1fr))", gap: 18, width: "100%" }}>
+            <div style={{ border: "1px solid #24423A", borderRadius: 18, background: "#0D2620", padding: 26 }}>
+              <p style={{ margin: "0 0 10px", color: "#8FB0A0", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em" }}>Step 1</p>
+              <strong style={{ display: "block", fontSize: "clamp(1.6rem, 3vw, 2.8rem)" }}>Enter the PIN shown in Kahoot</strong>
+            </div>
+            <div style={{ border: "1px solid #24423A", borderRadius: 18, background: "#0D2620", padding: 26 }}>
+              <p style={{ margin: "0 0 10px", color: "#8FB0A0", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em" }}>Step 2</p>
+              <strong style={{ display: "block", fontSize: "clamp(1.6rem, 3vw, 2.8rem)" }}>Use your student code as nickname</strong>
+            </div>
+          </div>
+          <p style={{ margin: 0, color: "#8FB0A0", fontSize: "clamp(1rem, 2vw, 1.35rem)" }}>{session ? `Session ${session.num}: ${session.title}` : "Your facilitator will help with codes if needed."}</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            <button onClick={() => setAudienceMode("leaderboard")} style={{ padding: "10px 18px", borderRadius: 8, border: "none", background: "#C8960C", color: "#081A18", fontWeight: 800, cursor: "pointer" }}>Back to Leaderboard</button>
+            <button onClick={onExit} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #24423A", background: "transparent", color: "#F0E6C8", fontWeight: 700, cursor: "pointer" }}>Exit TV Display</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "#081A18", color: "#F0E6C8", display: "flex", flexDirection: "column", padding: "28px 36px", gap: 24 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #24423A", paddingBottom: 18 }}>
@@ -526,6 +521,7 @@ const TVMode = ({ students, session, intermission, setIntermission, onExit }: {
           <h1 style={{ margin: 0, fontFamily: "Lora, serif", fontSize: "clamp(2rem, 4vw, 4rem)" }}>{session ? `Session ${session.num}: ${session.title}` : "Current Cohort"}</h1>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setAudienceMode("kahoot")} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #C8960C", background: "#C8960C", color: "#081A18", cursor: "pointer", fontWeight: 800 }}>Kahoot Instructions</button>
           <button onClick={() => setIntermission(true)} style={{ padding: "9px 14px", borderRadius: 8, border: "1px solid #24423A", background: "transparent", color: "#F0E6C8", cursor: "pointer", fontWeight: 700 }}>Intermission</button>
           <button onClick={onExit} style={{ padding: "9px 14px", borderRadius: 8, border: "none", background: "#24423A", color: "#F0E6C8", cursor: "pointer", fontWeight: 700 }}>Exit</button>
         </div>
@@ -1241,7 +1237,7 @@ const StudentsScreen = (props: ScreenProps) => {
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr>{["Code", "Name", "Cohort", "Kahoot Match", "Attendance", "Points", "Rank", ""].map(h => <th key={h} style={TH}>{h}</th>)}</tr>
+              <tr>{["Code", "Name", "Cohort", "Kahoot Name", "Attendance", "Points", "Rank", ""].map(h => <th key={h} style={TH}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {filtered.map(stu => {
@@ -1289,7 +1285,7 @@ const StudentsScreen = (props: ScreenProps) => {
                 </label>
                 <input value={editingStu?.code ?? "Generated after save"} disabled
                   style={{ ...inputSt, fontFamily: "monospace", background: "var(--muted)", cursor: "not-allowed" }} />
-                <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Permanent internal ID. If Kahoot match is blank, this code becomes the matching fallback.</p>
+                <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Permanent internal ID. If no Kahoot name is set, students should use this code as their Kahoot nickname.</p>
               </div>
               <div>
                 <label style={labelSt}>Cohorts</label>
@@ -1316,13 +1312,13 @@ const StudentsScreen = (props: ScreenProps) => {
                 <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--muted-foreground)" }}>Students can belong to more than one cohort. Sessions still belong to one cohort.</p>
               </div>
               <div>
-                <label style={labelSt}>Kahoot Match <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--muted-foreground)", fontWeight: 400 }}>(optional)</span></label>
-                <input value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} placeholder="Leave blank to use generated student code" style={inputSt} />
+                <label style={labelSt}>Kahoot Display Name <span style={{ textTransform: "none", letterSpacing: 0, color: "var(--muted-foreground)", fontWeight: 400 }}>(optional)</span></label>
+                <input value={form.playerId} onChange={e => setForm(f => ({ ...f, playerId: e.target.value }))} placeholder="Recommended: use the student code" style={inputSt} />
               </div>
             </div>
             <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 8, background: "var(--secondary)", fontSize: 11, color: "var(--muted-foreground)", display: "flex", gap: 7, alignItems: "flex-start" }}>
               <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
-              Kahoot matching should use the generated student code or a deliberate Kahoot identifier. Names alone are not reliable enough for result matching.
+              For reliable matching, students should type this exact value as their Kahoot nickname. If blank, use the generated student code. Names alone are not reliable.
             </div>
             {formError && <div style={{ marginTop: 10, padding: "9px 10px", borderRadius: 7, background: "#FEE2E2", color: "#7F1D1D", fontSize: 12 }}>{formError}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
@@ -1492,7 +1488,7 @@ const SessionsScreen = (props: ScreenProps) => {
 // SCORING
 // ============================================================
 
-const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessionId, refreshData }: ScreenProps) => {
+const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessionId, refreshData, embedded = false }: ScreenProps & { embedded?: boolean }) => {
   const [grades, setGrades] = useState<Record<string, SessionGrade>>(() => initGrades(students));
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
   const [sessionStatus, setSessionStatus] = useState<GradeStatus>("draft");
@@ -1606,7 +1602,13 @@ const ScoringScreen = ({ students, sessions, selectedSessionId, setSelectedSessi
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <PageHeader title="Session Scoring" description="Grade students for a selected session" />
+      {!embedded && <PageHeader title="Session Scoring" description="Grade students for a selected session" />}
+      {embedded && (
+        <div>
+          <p style={{ margin: "0 0 4px", color: "var(--muted-foreground)", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>Facilitator grading</p>
+          <h2 style={{ margin: 0, color: "var(--foreground)", fontFamily: "Lora, serif" }}>Attendance and class behaviour</h2>
+        </div>
+      )}
 
       {/* Session selector + actions */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1763,7 +1765,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
     optionD: "",
     correctOption: "A" as "A" | "B" | "C" | "D",
     timeLimit: 20,
-    points: 1000,
+    points: 1,
   });
 
   const cohort = cohorts.find(c => c.id === activeCohort);
@@ -1826,7 +1828,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
       optionD: "",
       correctOption: "A",
       timeLimit: 20,
-      points: 1000,
+      points: 1,
     });
   };
 
@@ -2006,7 +2008,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
             )}
             {actionCard(
               "Retrieve and review results",
-              "After Kahoot ends, retrieve or import the results, match them to saved Kahoot IDs, review exceptions, then apply quiz points.",
+              "After Kahoot ends, import results, match rows to saved Kahoot display names or student codes, review exceptions, then apply quiz points.",
               <RefreshCw size={17} />,
               <button onClick={() => setTab("results")} style={{ padding: "8px 12px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer" }}>Review Results</button>,
               "#10B981",
@@ -2136,7 +2138,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
               </div>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>Points</label>
-                <input type="number" min={0} max={2000} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+                <input type="number" min={0} max={100} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
               </div>
             </div>
 
@@ -2155,7 +2157,7 @@ const SessionWorkspaceScreen = (props: ScreenProps) => {
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: 18 }}>
           <h3 style={{ margin: "0 0 6px", fontFamily: "Lora, serif", color: "var(--foreground)" }}>Results Review</h3>
           <p style={{ margin: "0 0 16px", color: "var(--muted-foreground)", fontSize: 13, lineHeight: 1.5 }}>
-            The intended production flow is results-first: fetch or import Kahoot report data for this session, match rows by saved Kahoot ID, flag unmatched names, and only then apply scores to the leaderboard.
+            The intended flow is results-first: import Kahoot report data for this session, match rows by saved Kahoot display name or student code, flag unmatched names, and only then apply scores to the leaderboard.
           </p>
           <button onClick={() => setScreen("kahoot")} style={{ padding: "9px 14px", border: "none", borderRadius: 8, background: "var(--primary)", color: "var(--primary-foreground)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 7 }}><RefreshCw size={14} /> Open Kahoot Results</button>
         </div>
@@ -2171,9 +2173,11 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
   const [questions, setQuestions] = useState<ApiSessionQuestion[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [presenterExpandedQuestionIds, setPresenterExpandedQuestionIds] = useState<Set<number>>(new Set());
+  const [facilitatorExpandedQuestionIds, setFacilitatorExpandedQuestionIds] = useState<Set<number>>(new Set());
   const [draggedSectionId, setDraggedSectionId] = useState("");
   const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
-  const [scoreSheetOpen, setScoreSheetOpen] = useState(props.workspaceTab === "score");
+  const [scoreSheetOpen, setScoreSheetOpen] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [questionForm, setQuestionForm] = useState({
@@ -2184,7 +2188,7 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
     optionD: "",
     correctOption: "A" as "A" | "B" | "C" | "D",
     timeLimit: 20,
-    points: 1000,
+    points: 1,
   });
 
   const cohort = cohorts.find(c => c.id === activeCohort);
@@ -2251,7 +2255,7 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
       optionD: "",
       correctOption: "A",
       timeLimit: 20,
-      points: 1000,
+      points: 1,
     });
   };
 
@@ -2468,6 +2472,33 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
     });
   };
 
+  const togglePresenterQuestion = (questionId: number) => {
+    setPresenterExpandedQuestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(questionId)) next.delete(questionId);
+      else next.add(questionId);
+      return next;
+    });
+  };
+
+  const toggleFacilitatorQuestion = (questionId: number) => {
+    setFacilitatorExpandedQuestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(questionId)) next.delete(questionId);
+      else next.add(questionId);
+      return next;
+    });
+  };
+
+  const openScoreSheet = () => {
+    setMode("facilitator");
+    setScoreSheetOpen(true);
+    props.setWorkspaceTab("score");
+    window.setTimeout(() => {
+      document.getElementById("session-score-sheet")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   const modeButton = (id: "presenter" | "facilitator", label: string, help: string): React.CSSProperties => ({
     flex: "1 1 240px",
     border: "1px solid var(--border)",
@@ -2543,6 +2574,49 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
         <StatCard label="Next Step" value={selectedSection ? selectedSection.title : "Add section"} sub={selectedSection ? "selected section" : "no sections yet"} accent="#7C3AED" />
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ padding: 16, borderRadius: 14, background: "#0F3B35", color: "#F8F1DC", border: "1px solid #0F3B35", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <p style={{ margin: "0 0 4px", color: "#D6B756", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em" }}>Projector</p>
+            <strong style={{ display: "block", fontSize: 17 }}>Show audience display</strong>
+            <span style={{ display: "block", marginTop: 4, color: "#D7E7DF", fontSize: 12 }}>Leaderboard only. No answers, forms, or admin controls.</span>
+          </div>
+          <button onClick={onTVMode} style={{ marginTop: "auto", padding: "10px 12px", borderRadius: 9, border: "1px solid #D6B75666", background: "#D6B756", color: "#08221F", cursor: "pointer", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <Tv size={14} /> Open TV Display
+          </button>
+        </div>
+        <div style={{ padding: 16, borderRadius: 14, background: "var(--card)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <p style={{ margin: "0 0 4px", color: "var(--muted-foreground)", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em" }}>Presenter</p>
+            <strong style={{ display: "block", color: "var(--foreground)", fontSize: 16 }}>Run current section</strong>
+            <span style={{ display: "block", marginTop: 4, color: "var(--muted-foreground)", fontSize: 12 }}>{selectedSection ? selectedSection.title : "Create a section first"}</span>
+          </div>
+          <button onClick={() => selectedSection && openKahoot(selectedSection)} disabled={!selectedSection} style={{ marginTop: "auto", padding: "10px 12px", borderRadius: 9, border: "none", background: selectedSection ? "var(--primary)" : "var(--muted)", color: selectedSection ? "var(--primary-foreground)" : "var(--muted-foreground)", cursor: selectedSection ? "pointer" : "not-allowed", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <ExternalLink size={14} /> Open Kahoot
+          </button>
+        </div>
+        <div style={{ padding: 16, borderRadius: 14, background: "#FFFBEB", border: "1px solid #B8860B55", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <p style={{ margin: "0 0 4px", color: "#92400E", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em" }}>Facilitator</p>
+            <strong style={{ display: "block", color: "var(--foreground)", fontSize: 16 }}>Grade this session</strong>
+            <span style={{ display: "block", marginTop: 4, color: "#705A2D", fontSize: 12 }}>Attendance, punctuality, conduct, teamwork, deliverables.</span>
+          </div>
+          <button onClick={openScoreSheet} style={{ marginTop: "auto", padding: "10px 12px", borderRadius: 9, border: "none", background: "#92400E", color: "#FFF7ED", cursor: "pointer", fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <ClipboardList size={14} /> Open Grading
+          </button>
+        </div>
+        <div style={{ padding: 16, borderRadius: 14, background: "var(--card)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <p style={{ margin: "0 0 4px", color: "var(--muted-foreground)", fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.08em" }}>After quiz</p>
+            <strong style={{ display: "block", color: "var(--foreground)", fontSize: 16 }}>Import results</strong>
+            <span style={{ display: "block", marginTop: 4, color: "var(--muted-foreground)", fontSize: 12 }}>Match Kahoot export rows, then apply quiz points.</span>
+          </div>
+          <button onClick={() => setScreen("kahoot")} style={{ marginTop: "auto", padding: "10px 12px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--background)", color: "var(--foreground)", cursor: "pointer", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+            <RefreshCw size={14} /> Review Results
+          </button>
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button onClick={() => setMode("presenter")} style={modeButton("presenter", "Presenter View", "Run the workshop")}>
           <strong style={{ display: "block", fontSize: 15 }}>Presenter View</strong>
@@ -2563,10 +2637,10 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
       {loading ? (
         <div style={{ padding: 18, borderRadius: 12, background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>Loading session workspace...</div>
       ) : mode === "presenter" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "360px minmax(420px, 860px)", justifyContent: "start", gap: 16 }}>
           <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
             <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)" }}>Workshop Sections</h3>
-            <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.45 }}>Choose the part of the workshop being delivered now.</p>
+            <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.45 }}>Pick the current section.</p>
             {orderedSections.map(section => {
               const active = selectedSection?.id === section.id;
               const sectionQuestions = questions.filter(question => question.kahoot_run_id === section.id);
@@ -2587,35 +2661,57 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
                   <div>
                     <div style={{ color: "var(--muted-foreground)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current Section</div>
                     <h2 style={{ margin: "6px 0", fontFamily: "Lora, serif", color: "var(--foreground)" }}>{selectedSection.title}</h2>
-                    <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{selectedSection.notes || "No section notes yet."}</p>
+                    <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12 }}>Staff-only view. Project TV Display or Kahoot, not this workspace.</p>
                   </div>
                   <button onClick={() => openKahoot(selectedSection)} style={{ padding: "11px 16px", borderRadius: 9, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", fontWeight: 800, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                     <ExternalLink size={15} /> Open Kahoot
                   </button>
                 </div>
 
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button onClick={onTVMode} style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid #0F3B3555", background: "#ECFDF5", color: "#0F3B35", cursor: "pointer", textAlign: "left", fontWeight: 900 }}>
+                    <Tv size={15} style={{ marginRight: 7, verticalAlign: "middle" }} /> Audience leaderboard
+                    <span style={{ display: "block", marginTop: 4, fontSize: 12, fontWeight: 600, color: "#2F6B5E" }}>Safe for projector</span>
+                  </button>
+                  <button onClick={() => openKahoot(selectedSection)} style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid #C8960C66", background: "#FFFBEB", color: "#78350F", cursor: "pointer", textAlign: "left", fontWeight: 900 }}>
+                    <ExternalLink size={15} style={{ marginRight: 7, verticalAlign: "middle" }} /> Kahoot join screen
+                    <span style={{ display: "block", marginTop: 4, fontSize: 12, fontWeight: 600, color: "#8A6A24" }}>Shows PIN/QR inside Kahoot</span>
+                  </button>
+                </div>
+
                 <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-                  <h3 style={{ margin: "0 0 10px", color: "var(--foreground)", fontSize: 15 }}>Questions in this section</h3>
+                  <h3 style={{ margin: "0 0 10px", color: "var(--foreground)", fontSize: 15 }}>Presenter prompts</h3>
                   {selectedSectionQuestions.length === 0 ? (
                     <div style={{ padding: 14, borderRadius: 9, background: "var(--secondary)", color: "var(--muted-foreground)", fontSize: 13 }}>No questions yet. Switch to Facilitator View to add them.</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {selectedSectionQuestions.map((question, index) => (
-                        <div key={question.id} style={{ padding: 13, borderRadius: 10, border: "1px solid var(--border)", background: "var(--background)" }}>
-                          <strong style={{ display: "block", color: "var(--foreground)" }}>{index + 1}. {question.prompt}</strong>
-                          <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
-                            {question.options.map((option, optionIndex) => {
-                              const label = ["A", "B", "C", "D"][optionIndex];
-                              const correct = label === question.correct_option;
-                              return (
-                                <div key={`${question.id}-${label}`} style={{ padding: "7px 9px", borderRadius: 7, background: correct ? "#DCFCE7" : "var(--secondary)", color: correct ? "#14532D" : "var(--muted-foreground)", fontSize: 12, fontWeight: correct ? 800 : 500 }}>
-                                  {label}. {option}
-                                </div>
-                              );
-                            })}
+                      {selectedSectionQuestions.map((question, index) => {
+                        const expanded = presenterExpandedQuestionIds.has(question.id);
+                        return (
+                          <div key={question.id} style={{ padding: 13, borderRadius: 10, border: "1px solid var(--border)", background: "var(--background)" }}>
+                            <button
+                              type="button"
+                              onClick={() => togglePresenterQuestion(question.id)}
+                              style={{ width: "100%", border: "none", background: "transparent", color: "var(--foreground)", cursor: "pointer", padding: 0, display: "flex", justifyContent: "space-between", gap: 12, textAlign: "left", alignItems: "flex-start" }}
+                            >
+                              <strong>{index + 1}. {question.prompt}</strong>
+                              <span style={{ color: "var(--muted-foreground)", fontSize: 12, whiteSpace: "nowrap" }}>{expanded ? "Hide choices" : "Show choices"}</span>
+                            </button>
+                            {expanded && (
+                              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+                                {question.options.map((option, optionIndex) => {
+                                  const label = ["A", "B", "C", "D"][optionIndex];
+                                  return (
+                                    <div key={`${question.id}-${label}`} style={{ padding: "7px 9px", borderRadius: 7, background: "var(--secondary)", color: "var(--foreground)", fontSize: 12, fontWeight: 600 }}>
+                                      {label}. {option}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -2630,8 +2726,8 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
               <div>
-                <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)" }}>Template Sections</h3>
-                <p style={{ margin: "4px 0 0", color: "var(--muted-foreground)", fontSize: 12 }}>Drag sections to reorder. Expand a section to edit, export, or set its Kahoot link.</p>
+                <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)" }}>Session Setup</h3>
+                <p style={{ margin: "4px 0 0", color: "var(--muted-foreground)", fontSize: 12 }}>Sections, questions, Kahoot handoff, and grading all stay tied to this session.</p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={createSection} style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: "var(--primary)", color: "var(--primary-foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Plus size={13} /> Add Section</button>
@@ -2669,7 +2765,6 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
 
                   {!collapsed && (
                     <div style={{ borderTop: "1px solid var(--border)", padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
-                      <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{section.notes || "No notes saved for this section."}</p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button onClick={() => renameSection(section)} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}><Edit3 size={12} /> Rename</button>
                         <button onClick={() => editSectionNotes(section)} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}><FileText size={12} /> Notes</button>
@@ -2681,18 +2776,40 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
                         <div style={{ padding: 12, borderRadius: 8, background: "var(--secondary)", color: "var(--muted-foreground)", fontSize: 12 }}>No questions in this section yet. Select it and use the form on the right.</div>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {sectionQuestions.map((question, index) => (
-                            <div key={question.id} style={{ padding: 10, borderRadius: 8, border: "1px solid var(--border)", background: "var(--background)", display: "flex", justifyContent: "space-between", gap: 12 }}>
-                              <div>
-                                <strong style={{ display: "block", color: "var(--foreground)", fontSize: 13 }}>{index + 1}. {question.prompt}</strong>
-                                <span style={{ color: "var(--muted-foreground)", fontSize: 11 }}>{question.time_limit_seconds}s - {question.points} pts - correct {question.correct_option}</span>
+                          {sectionQuestions.map((question, index) => {
+                            const questionOpen = facilitatorExpandedQuestionIds.has(question.id);
+                            return (
+                              <div key={question.id} style={{ padding: 10, borderRadius: 8, border: "1px solid var(--border)", background: "var(--background)", display: "flex", flexDirection: "column", gap: 10 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleFacilitatorQuestion(question.id)}
+                                    style={{ flex: 1, border: "none", background: "transparent", color: "var(--foreground)", cursor: "pointer", padding: 0, textAlign: "left" }}
+                                  >
+                                    <strong style={{ display: "block", color: "var(--foreground)", fontSize: 13 }}>{index + 1}. {question.prompt}</strong>
+                                    <span style={{ color: "var(--muted-foreground)", fontSize: 11 }}>{question.time_limit_seconds}s - {question.points} pt{question.points === 1 ? "" : "s"} - {questionOpen ? "hide choices" : "show choices"}</span>
+                                  </button>
+                                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                                    <button onClick={() => editQuestion(question)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Edit</button>
+                                    <button onClick={() => removeQuestion(question)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #991B1B55", background: "#FEE2E2", color: "#7F1D1D", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Delete</button>
+                                  </div>
+                                </div>
+                                {questionOpen && (
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+                                    {question.options.map((option, optionIndex) => {
+                                      const label = ["A", "B", "C", "D"][optionIndex] as "A" | "B" | "C" | "D";
+                                      const correct = label === question.correct_option;
+                                      return (
+                                        <div key={`${question.id}-${label}`} style={{ padding: "7px 9px", borderRadius: 7, background: correct ? "#DCFCE7" : "var(--secondary)", color: correct ? "#14532D" : "var(--foreground)", fontSize: 12, fontWeight: 700 }}>
+                                          {label}. {option}{correct ? " (correct)" : ""}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                                <button onClick={() => editQuestion(question)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Edit</button>
-                                <button onClick={() => removeQuestion(question)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid #991B1B55", background: "#FEE2E2", color: "#7F1D1D", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Delete</button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2743,7 +2860,7 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
                 </div>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>Points</label>
-                  <input type="number" min={0} max={2000} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+                  <input type="number" min={0} max={100} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -2755,18 +2872,19 @@ const WorkshopFlowScreen = (props: ScreenProps) => {
             </form>
 
             <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-              <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)" }}>Facilitator Controls</h3>
-              <button onClick={() => setScreen("kahoot")} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}><RefreshCw size={14} /> Import or Review Results</button>
-              <button onClick={() => { props.setWorkspaceTab("score"); setScoreSheetOpen(open => !open); }} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={14} /> {scoreSheetOpen ? "Hide Score Sheet" : "Open Score Sheet"}</button>
-              <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.45 }}>Current reliable Kahoot flow: export this section, import it in Kahoot, host manually, export Kahoot results, then import and review them here.</p>
+              <h3 style={{ margin: 0, fontFamily: "Lora, serif", color: "var(--foreground)" }}>Session Actions</h3>
+              <button onClick={openScoreSheet} style={{ padding: "11px 12px", borderRadius: 8, border: "none", background: "#92400E", color: "#FFF7ED", cursor: "pointer", fontWeight: 900, display: "flex", alignItems: "center", gap: 7 }}><ClipboardList size={14} /> Grade Attendance and Conduct</button>
+              <button onClick={() => setScreen("kahoot")} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--foreground)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}><RefreshCw size={14} /> Import Kahoot Results</button>
+              <button onClick={onTVMode} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #0F3B3555", background: "#ECFDF5", color: "#0F3B35", cursor: "pointer", fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Tv size={14} /> Show Audience Display</button>
+              <p style={{ margin: 0, color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1.45 }}>Export questions before the session, host in Kahoot, then import results during a break or after the session.</p>
             </div>
           </div>
         </div>
       )}
 
       {mode === "facilitator" && scoreSheetOpen && (
-        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
-          <ScoringScreen {...props} />
+        <div id="session-score-sheet" style={{ background: "var(--card)", border: "2px solid #92400E55", borderRadius: 14, padding: 18, boxShadow: "0 18px 40px rgba(146, 64, 14, 0.08)" }}>
+          <ScoringScreen {...props} embedded />
         </div>
       )}
     </div>
@@ -2804,7 +2922,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
     optionD: "",
     correctOption: "A" as "A" | "B" | "C" | "D",
     timeLimit: 20,
-    points: 1000,
+    points: 1,
   });
 
   const cohortSessions  = [...sessions].sort((a, b) => a.num - b.num);
@@ -2857,7 +2975,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
       optionD: "",
       correctOption: "A",
       timeLimit: 20,
-      points: 1000,
+      points: 1,
     });
   };
 
@@ -3322,7 +3440,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
           <div>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "var(--foreground)" }}>Session Sections</p>
             <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--muted-foreground)" }}>
-              These are the live workshop checkpoints. Drag to reorder, collapse what you do not need, then export one section or all sections for Kahoot.
+              Export section files, save Kahoot links, and import results.
             </p>
           </div>
           <button
@@ -3397,9 +3515,6 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
 
                   {!isCollapsed && (
                     <>
-                      <p style={{ margin: 0, fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5 }}>
-                        {run.notes || run.section_label || "No presenter note saved."}
-                      </p>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                         <button
                           type="button"
@@ -3547,7 +3662,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
                 </div>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)" }}>Pts</label>
-                  <input type="number" min={0} max={2000} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
+                  <input type="number" min={0} max={100} value={questionForm.points} onChange={event => updateQuestionField("points", Number(event.target.value))} style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 9px", background: "var(--background)", color: "var(--foreground)", fontSize: 13 }} />
                 </div>
               </div>
               <button type="submit" disabled={!selectedRun || !questionForm.prompt.trim() || !questionForm.optionA.trim() || !questionForm.optionB.trim()} style={!selectedRun || !questionForm.prompt.trim() || !questionForm.optionA.trim() || !questionForm.optionB.trim() ? BtnDisabled : BtnPrimary}>
@@ -3557,7 +3672,7 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
 
             <p style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Student Identifiers</p>
             <p style={{ fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.6, margin: "0 0 12px" }}>
-              Students enter their saved <strong style={{ color: "var(--foreground)" }}>Kahoot ID</strong> as their display name. Results are matched by that identifier.
+              Students enter their app student code as their Kahoot nickname. Results are matched by that value.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {students.filter(s => s.cohortId).slice(0, 8).map(s => (
@@ -3710,10 +3825,10 @@ const KahootScreen = ({ sessions, students, selectedSessionId, setSelectedSessio
             <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px" }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 10px" }}>Student Instructions</p>
               <p style={{ fontSize: 13, color: "var(--foreground)", lineHeight: 1.6, margin: "0 0 8px" }}>
-                Tell students: <strong>go to kahoot.it, enter the PIN, and use their saved Kahoot ID as the display name.</strong>
+                Tell students: <strong>go to kahoot.it, enter the PIN, and use their student code as the Kahoot nickname.</strong>
               </p>
               <p style={{ fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.5, margin: 0 }}>
-                If a student does not have a Kahoot ID yet, use their generated student code for today and record that value on the Students page before importing results.
+                If a student needs a custom nickname, record that exact value on the Students page before importing results.
               </p>
             </div>
 
@@ -3971,7 +4086,7 @@ const ReportsScreen = ({ activeCohort, cohorts, students, sessions }: ScreenProp
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
           <div>
             <p style={{ fontSize: 13, color: "var(--muted-foreground)", marginBottom: 10 }}>
-              <span style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 700, color: "var(--foreground)" }}>{withId.length}</span> of <strong>{students.length}</strong> students have a player identifier configured.
+              <span style={{ fontFamily: "monospace", fontSize: 22, fontWeight: 700, color: "var(--foreground)" }}>{withId.length}</span> of <strong>{students.length}</strong> students have a custom Kahoot name configured.
             </p>
             {withoutId.length > 0 && (
               <div>

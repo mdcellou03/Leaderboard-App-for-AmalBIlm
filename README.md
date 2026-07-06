@@ -30,8 +30,8 @@ The app is organized around cohorts and workshop sessions.
 
 1. Create or select a cohort.
 2. Add students and assign them to one or more cohorts.
-3. Set each student's Kahoot ID when known. If no Kahoot ID is available, the
-   generated student code can be used as the matching identifier.
+3. Use the generated student code as the student's Kahoot nickname/display name,
+   or save a custom exact Kahoot display name if needed.
 4. Create a workshop session for the cohort.
 5. Use the Session Workspace during preparation or while the session is running.
 6. Use Presenter View when the presenter only needs the current section and its
@@ -55,6 +55,11 @@ This design keeps the app useful even while the Kahoot integration is still bein
 finalized. Kahoot handles the live quiz experience; this app owns the program
 records, matching, scoring, and leaderboard.
 
+Presenter View is not the audience display. It hides correct answers by default,
+but staff should use TV Display or Kahoot itself for projection. TV Display is a
+full-screen leaderboard surface and does not expose staff controls, answer keys,
+or scoring forms.
+
 ## Kahoot Integration Position
 
 The current implementation does not pretend to start a Kahoot game through an
@@ -70,6 +75,10 @@ unsupported endpoint. The working flow is:
 - Staff stores the Kahoot quiz/report link against the section.
 - Results are imported back into the app and matched to students.
 - Reviewed results are applied to the scoring table.
+
+Kahoot participants should use their app student code as the Kahoot nickname
+unless staff deliberately records a custom Kahoot display name on the Students
+page. The app does not depend on students finding a separate Kahoot profile ID.
 
 The result import screen accepts Kahoot `.csv` or `.xlsx` exports. It also keeps
 a paste fallback in this format:
