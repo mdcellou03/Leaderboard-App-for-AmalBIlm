@@ -21,15 +21,56 @@ from services.scoring import apply_rubric_payload, compute_leaderboard, compute_
 from services.students import student_code
 
 
+DEFAULT_SESSION_NOTES = (
+    "Mission: Empower youth with knowledge, character, and critical thinking so they can ethically "
+    "use technology as khulafaa on earth.\n\n"
+    "Purpose: This is not just career advice. The presenter should connect their skill, path, and "
+    "choices to service, responsibility, Islamic boundaries, and practical next steps."
+)
+
 DEFAULT_SESSION_SECTIONS = [
-    ("Our Mission", "Open with the program mission and connect the workshop to Amal B'Ilm's purpose."),
-    ("The Purpose", "Frame the skill, topic, or problem the session will focus on."),
-    ("How Your Skill Serves the Community", "Connect the session skill to real community benefit."),
-    ("The Real Cost of Entry", "Discuss the effort, tradeoffs, and constraints behind the skill."),
-    ("What You Would Do Differently", "Ask the presenter to reflect on lessons learned and better choices."),
-    ("Growing While Maintaining Islamic Boundaries", "Discuss growth, ambition, and boundaries through an Islamic lens."),
-    ("Hands-On Demo", "Give students an active task, demo, or short application exercise."),
-    ("What This Unlocks", "Close with next steps, possibilities, and how students can keep learning."),
+    (
+        "How Your Skill Serves the Community",
+        "Hook: show the real-world community need this skill answers.\n"
+        "Value delivery: explain where the skill is used and who benefits.\n"
+        "Engagement: ask students to identify one problem this skill could solve.\n"
+        "CTA: connect the skill to service and responsibility.",
+    ),
+    (
+        "The Real Cost of Entry",
+        "Hook: name the honest effort, sacrifice, or tradeoff behind the path.\n"
+        "Value delivery: explain time, money, discipline, school, training, and character requirements.\n"
+        "Engagement: ask students what surprised them about the path.\n"
+        "CTA: turn ambition into a realistic first step.",
+    ),
+    (
+        "What You'd Do Differently",
+        "Hook: share a mistake, delay, or lesson learned.\n"
+        "Value delivery: explain what the presenter would repeat, change, or avoid.\n"
+        "Engagement: ask students what advice they would give their future self.\n"
+        "CTA: frame reflection as part of growth, not embarrassment.",
+    ),
+    (
+        "Growing While Maintaining Islamic Boundaries",
+        "Hook: describe a boundary challenge in the field or learning path.\n"
+        "Value delivery: explain how to grow while protecting salah, adab, modesty, honesty, and purpose.\n"
+        "Engagement: ask students to choose a boundary they need to plan for.\n"
+        "CTA: show that excellence and Islamic identity can work together.",
+    ),
+    (
+        "Hands-On Demo",
+        "Hook: let students see or try the skill instead of only hearing about it.\n"
+        "Value delivery: demonstrate a simple, concrete task.\n"
+        "Engagement: give students a short activity, prediction, or decision point.\n"
+        "CTA: make the skill feel reachable and practical.",
+    ),
+    (
+        "What This Unlocks",
+        "Hook: show the doors this skill can open.\n"
+        "Value delivery: connect the session to future learning, careers, projects, and community impact.\n"
+        "Engagement: ask students to name one next step they could take this week.\n"
+        "CTA: close with encouragement and accountability.",
+    ),
 ]
 
 
@@ -209,7 +250,7 @@ def register_api_routes(app: Flask) -> None:
             presenter=str(payload.get("presenter", "")).strip(),
             session_date=session_date,
             start_time=start_time,
-            notes=str(payload.get("notes", "")).strip(),
+            notes=str(payload.get("notes", "")).strip() or DEFAULT_SESSION_NOTES,
             status="draft",
             kahoot_status="questions-ready",
         )
@@ -226,6 +267,20 @@ def register_api_routes(app: Flask) -> None:
 
         db.session.commit()
         return jsonify({"session": _session_payload(workshop_session)}), 201
+
+    @app.delete("/api/sessions/<int:session_id>")
+    def api_delete_session(session_id: int):
+        auth_error = _require_admin()
+        if auth_error:
+            return auth_error
+
+        workshop_session = db.session.get(WorkshopSession, session_id)
+        if not workshop_session:
+            return jsonify({"error": "Session not found."}), 404
+
+        db.session.delete(workshop_session)
+        db.session.commit()
+        return jsonify({"deleted": True, "session_id": session_id})
 
     @app.get("/api/sessions/<int:session_id>/scores")
     def api_session_scores(session_id: int):
@@ -916,14 +971,23 @@ def _replace_kahoot_results(run: KahootRun, rows: list[dict]) -> None:
 
 def _kahoot_xlsx_bytes(title: str, questions: list[SessionQuestion]) -> bytes:
     rows = [
+        [],
         ["", "Quiz template"],
-        ["", "Generated by the Amal B'Ilm leaderboard app for Kahoot import."],
-        ["", "Questions have a 120 character limit. Answers have a 75 character limit."],
-        ["", "Upload this .xlsx in Kahoot using Add question -> Import spreadsheet."],
+        ["", "Add questions, at least two answer alternatives, time limit and choose correct answer(s)."],
+        ["", "Remember: questions have a limit of 120 characters and answers have a limit of 75 characters."],
+        ["", "See an example question below. Replace it with your own questions before importing."],
+        ["", "And remember, if you're not using Excel you need to export to .xlsx format before importing to Kahoot."],
         [],
-        [],
-        [],
-        ["", "Question - max 120 characters", "Answer 1 - max 75 characters", "Answer 2 - max 75 characters", "Answer 3 - max 75 characters", "Answer 4 - max 75 characters", "Time limit (sec) - 5, 10, 20, 30, 60, 90, 120, or 240 secs", "Correct answer(s) - choose at least one"],
+        [
+            "",
+            "Question - max 120 characters",
+            "Answer 1 - max 75 characters",
+            "Answer 2 - max 75 characters",
+            "Answer 3 - max 75 characters",
+            "Answer 4 - max 75 characters",
+            "Time limit (sec) - 5, 10, 20, 30, 60, 90, 120, or 240 secs",
+            "Correct answer(s) - choose at least one",
+        ],
     ]
 
     for index, question in enumerate(questions, start=1):
@@ -935,6 +999,9 @@ def _kahoot_xlsx_bytes(title: str, questions: list[SessionQuestion]) -> bytes:
             str(_valid_kahoot_time_limit(question.time_limit_seconds)),
             str(["A", "B", "C", "D"].index(question.correct_option) + 1),
         ])
+
+    for index in range(len(questions) + 1, 101):
+        rows.append([str(index)])
 
     output = BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:

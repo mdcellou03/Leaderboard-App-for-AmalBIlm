@@ -264,6 +264,10 @@ export async function createSession(payload: {
   return data.session;
 }
 
+export async function deleteSession(sessionId: number): Promise<void> {
+  await deleteJson<{ deleted: boolean; session_id: number }>(`/api/sessions/${sessionId}`);
+}
+
 export async function fetchSessionScores(sessionId: number): Promise<ApiScoreEntry[]> {
   const data = await fetchJson<{ scores: ApiScoreEntry[] }>(`/api/sessions/${sessionId}/scores`);
   return data.scores;

@@ -34,18 +34,22 @@ The app is organized around cohorts and workshop sessions.
    generated student code can be used as the matching identifier.
 4. Create a workshop session for the cohort.
 5. Use the Session Workspace during preparation or while the session is running.
-6. Review the auto-created workshop sections from the session template.
-7. Rename, reorder, collapse, or delete sections as needed for that presenter.
-8. Add questions to the relevant section during preparation or live facilitation.
-9. Export one section as a Kahoot-format `.xlsx`, or export all populated
+6. Use Presenter View when the presenter only needs the current section and its
+   Kahoot link.
+7. Use Facilitator View to manage the setup behind the scenes.
+8. Review the auto-created workshop sections from the session template.
+9. Rename, reorder, collapse, or delete sections as needed for that presenter.
+10. Add questions directly to the relevant section during preparation or live
+   facilitation.
+11. Export one section as a Kahoot-format `.xlsx`, or export all populated
    sections as a `.zip`.
-10. Host the quiz manually in Kahoot.
-11. Upload the Kahoot result export back into the same section, or paste rows as
+12. Host the quiz manually in Kahoot.
+13. Upload the Kahoot result export back into the same section, or paste rows as
     a fallback.
-12. Review unmatched result rows.
-13. Apply reviewed Kahoot points to the session score sheet.
-14. Publish reviewed scores when ready.
-15. Show the leaderboard through the public view or TV display.
+14. Review unmatched result rows.
+15. Apply reviewed Kahoot points to the session score sheet.
+16. Publish reviewed scores when ready.
+17. Show the leaderboard through the public view or TV display.
 
 This design keeps the app useful even while the Kahoot integration is still being
 finalized. Kahoot handles the live quiz experience; this app owns the program
@@ -59,7 +63,8 @@ unsupported endpoint. The working flow is:
 - The app stores Kahoot sections under a workshop session.
 - New sessions are populated with editable sections based on the workshop
   template.
-- Each section can export its assigned questions in Kahoot's spreadsheet shape.
+- Each section can export its assigned questions in Kahoot's spreadsheet shape,
+  with headers aligned to the provided Kahoot quiz template.
 - A full session can export all populated sections as a zip of `.xlsx` files.
 - Staff creates and hosts the quiz in Kahoot.
 - Staff stores the Kahoot quiz/report link against the section.
@@ -194,6 +199,7 @@ DELETE /api/students/<student_id>
 
 GET  /api/sessions
 POST /api/sessions
+DELETE /api/sessions/<session_id>
 
 GET /api/sessions/<session_id>/scores
 PUT /api/sessions/<session_id>/scores
